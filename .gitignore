@@ -1,0 +1,17 @@
+# Configuração pessoal (caminhos do seu PC e do seu Drive). Copie painel.config.exemplo.json.
+painel.config.json
+
+# Colab CLI: recriados por colab-cli/instalar.sh (o bin/colab aponta para o venv do seu WSL)
+colab-cli/_dl/
+colab-cli/bin/
+colab-cli/_voz/
+
+# Notebooks salvos depois de rodar (têm saídas e caminhos da sua conta)
+notebooks/*_output.ipynb
+
+node_modules/
+*.log
+.env*
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,0 +1,122 @@
+{
+  "_leia": "Receitas da Visão geral ('O que você quer fazer?'). Cada uma junta ferramentas (ids dos plugins) e só aparece se todas estiverem ativas. Passo: onde = painel (tem botão no Painel) ou ia (peça ao Claude/IA no chat). inicio: enviar (leva ao Enviar vídeo) ou o id de uma aba. estado: pronto | experimental. pedido: frase de exemplo para pedir à IA.",
+  "receitas": [
+    {
+      "id": "legendas-animadas",
+      "titulo": "Pôr legendas animadas no meu vídeo",
+      "resultado": "Vídeo com legendas palavra a palavra, zoom nos momentos fortes e efeitos.",
+      "ferramentas": ["colab", "hyperframes"],
+      "estado": "pronto",
+      "inicio": "enviar",
+      "passos": [
+        { "onde": "painel", "texto": "Enviar o vídeo" },
+        { "onde": "painel", "texto": "Transcrever na GPU (Colab)" },
+        { "onde": "painel", "texto": "Criar a composição (legendas e efeitos)" },
+        { "onde": "ia", "texto": "Montar legendas, zoom e efeitos a partir da transcrição" },
+        { "onde": "painel", "texto": "Renderizar e baixar" }
+      ],
+      "pedido": "Transcreve o vídeo que eu enviei e faz legendas animadas em 9:16, com zoom nos momentos fortes."
+    },
+    {
+      "id": "corte-vertical",
+      "titulo": "Tirar um corte curto e vertical de um vídeo longo",
+      "resultado": "Trecho de 30 a 90 s, em 9:16, legendado, pronto para Reels/Shorts.",
+      "ferramentas": ["pullcut", "colab", "hyperframes"],
+      "estado": "pronto",
+      "inicio": "pullcut",
+      "passos": [
+        { "onde": "painel", "texto": "Baixar o vídeo (seu ou com licença) no PullCut, ou enviar o seu" },
+        { "onde": "painel", "texto": "Transcrever na GPU" },
+        { "onde": "ia", "texto": "Escolher o melhor trecho pela transcrição e montar em 9:16 com legendas" },
+        { "onde": "painel", "texto": "Renderizar e baixar" }
+      ],
+      "pedido": "Acha o trecho mais forte desse vídeo e faz um corte vertical de até 60 segundos, legendado."
+    },
+    {
+      "id": "cortar-montar",
+      "titulo": "Cortar e montar um vídeo à mão",
+      "resultado": "Você no controle da timeline: cortes, ordem dos clipes, trilha.",
+      "ferramentas": ["filmcraft"],
+      "estado": "pronto",
+      "inicio": "enviar",
+      "passos": [
+        { "onde": "painel", "texto": "Enviar o vídeo" },
+        { "onde": "painel", "texto": "Cortar e montar (abre o FilmCraft com o vídeo)" },
+        { "onde": "painel", "texto": "Editar e exportar no FilmCraft" }
+      ]
+    },
+    {
+      "id": "legenda-timeline",
+      "titulo": "Legendar e ajustar as legendas à mão",
+      "resultado": "Transcrição de qualidade virando legenda .srt na timeline, para revisar e corrigir.",
+      "ferramentas": ["colab", "filmcraft"],
+      "estado": "pronto",
+      "inicio": "enviar",
+      "passos": [
+        { "onde": "painel", "texto": "Enviar o vídeo e transcrever na GPU" },
+        { "onde": "painel", "texto": "Cortar e montar (abre o FilmCraft com o vídeo)" },
+        { "onde": "ia", "texto": "Mandar o .srt da transcrição (HyperFrames/transcricao) para a timeline" },
+        { "onde": "painel", "texto": "Revisar e exportar no FilmCraft" }
+      ],
+      "pedido": "Transcreve o vídeo que eu enviei e põe as legendas na timeline do FilmCraft para eu revisar."
+    },
+    {
+      "id": "explicativo",
+      "titulo": "Fazer um vídeo explicativo sem gravar nada",
+      "resultado": "Roteiro narrado por voz sintética, com animações, textos e gráficos.",
+      "ferramentas": ["colab", "hyperframes"],
+      "estado": "experimental",
+      "nota": "A narração natural sai do Chatterbox no Colab (gasta unidades; uns 5 min de preparo). Sem Colab, a voz local do HyperFrames é grátis, mas mais robótica.",
+      "passos": [
+        { "onde": "ia", "texto": "Escrever o roteiro com você" },
+        { "onde": "painel", "texto": "Gerar a narração na aba Colab (cole o roteiro e clique)" },
+        { "onde": "ia", "texto": "Animar cenas, textos e gráficos no ritmo da fala" },
+        { "onde": "painel", "texto": "Renderizar (no PC ou no Colab) e baixar" }
+      ],
+      "pedido": "Faz um vídeo explicativo de 45 segundos sobre <assunto>, narrado em português, com animações simples."
+    },
+    {
+      "id": "vinheta",
+      "titulo": "Criar abertura, vinheta ou lower third",
+      "resultado": "Peças animadas prontas para usar no começo, no fim ou por cima dos seus vídeos.",
+      "ferramentas": ["hyperframes"],
+      "estado": "pronto",
+      "nota": "O catálogo tem 448 blocos e componentes; eles vêm com texto de exemplo em inglês e são adaptados ao seu.",
+      "passos": [
+        { "onde": "ia", "texto": "Escolher um bloco do catálogo (títulos, logos, transições, lower thirds)" },
+        { "onde": "ia", "texto": "Adaptar texto, cores e fonte à sua marca" },
+        { "onde": "painel", "texto": "Renderizar e baixar" }
+      ],
+      "pedido": "Cria uma abertura de 4 segundos com o nome do meu canal, nas cores âmbar e preto."
+    },
+    {
+      "id": "recorte",
+      "titulo": "Me recortar e pôr sobre outro fundo",
+      "resultado": "Você sem o fundo original, sobre animação, cor ou outro vídeo.",
+      "ferramentas": ["hyperframes"],
+      "estado": "experimental",
+      "nota": "Funciona melhor com a pessoa perto da câmera. No CPU deste PC: cerca de 1 minuto de processamento para cada 3 segundos de vídeo.",
+      "inicio": "enviar",
+      "passos": [
+        { "onde": "painel", "texto": "Enviar o vídeo" },
+        { "onde": "ia", "texto": "Tirar o fundo" },
+        { "onde": "ia", "texto": "Compor sobre o fundo novo" },
+        { "onde": "painel", "texto": "Renderizar e baixar" }
+      ],
+      "pedido": "Tira o fundo do vídeo que eu enviei e me coloca sobre um fundo animado escuro."
+    },
+    {
+      "id": "produto-site",
+      "titulo": "Vídeo de produto a partir de um site",
+      "resultado": "Animação com as cores, fontes e telas do site.",
+      "ferramentas": ["hyperframes"],
+      "estado": "experimental",
+      "passos": [
+        { "onde": "ia", "texto": "Capturar o site (prints, cores, fontes, ícones)" },
+        { "onde": "ia", "texto": "Montar a animação com essas peças" },
+        { "onde": "painel", "texto": "Renderizar e baixar" }
+      ],
+      "pedido": "Captura o site <endereço> e faz um vídeo de 20 segundos apresentando o produto."
+    }
+  ]
+}

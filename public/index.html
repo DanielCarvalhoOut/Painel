@@ -1,0 +1,908 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23e5a93b' stroke-width='1.8'%3E%3Ccircle cx='12' cy='12' r='9.5'/%3E%3Cellipse cx='12' cy='12' rx='4.2' ry='9.5'/%3E%3Cpath d='M2.8 9h18.4M2.8 15h18.4'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@125,700;125,800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/core/base.css">
+<style>
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+
+  /* ---------- topo ---------- */
+  .topo { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line-soft); }
+  .topo > .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 14px; padding-bottom: 12px; flex-wrap: wrap; }
+  .marca { display: flex; align-items: center; gap: 12px; }
+  .mini-globo { margin: 0; font: 5px/5px var(--mono); letter-spacing: 0; user-select: none; }
+  .logo { font: 800 22px var(--display); font-stretch: 125%; letter-spacing: .04em; text-transform: uppercase; }
+  .sub { font: 12px var(--mono); color: var(--muted); }
+  /* Doca de status: ícones flutuantes com efeito lupa (os vizinhos do cursor crescem juntos). */
+  .chips { display: flex; flex: none; justify-content: flex-end; align-items: flex-start; gap: 10px; height: 36px; padding: 0 4px; font: 12px var(--mono); color: var(--muted); }
+  .doca-item .ico { transition: border-radius .16s ease; }
+  .chips .falha-srv { color: var(--err); align-self: center; }
+  .doca-item {
+    --z: 1; position: relative; width: calc(34px * var(--z)); height: calc(34px * var(--z)); padding: 0; border: 0; background: none; flex: none;
+    /* Cresce em largura (não só escala) para empurrar os vizinhos, como a doca de verdade. */
+    transition: width .16s cubic-bezier(.2, .8, .2, 1), height .16s cubic-bezier(.2, .8, .2, 1);
+    animation: flutuar 4s ease-in-out infinite;
+  }
+  .doca-item:nth-child(2) { animation-delay: -1s; } .doca-item:nth-child(3) { animation-delay: -2s; } .doca-item:nth-child(4) { animation-delay: -3s; }
+  .chips.ativa .doca-item { animation-play-state: paused; }
+  @keyframes flutuar { 50% { translate: 0 -2px; } }
+  .doca-item .ico {
+    display: grid; place-items: center; width: 100%; height: 100%; border-radius: calc(9px * var(--z)); overflow: hidden;
+    background: var(--raised); border: 1px solid var(--line); box-shadow: 0 4px 12px #0007;
+    font: 600 10px var(--mono); color: var(--amber);
+  }
+  .doca-item img.ico { object-fit: contain; padding: 4px; }
+  .doca-item img.ico.cheia { padding: 0; }
+  .doca-item.off .ico { filter: grayscale(.85) brightness(.75); }
+  .doca-item .pt { position: absolute; right: -2px; bottom: -2px; width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--bg); background: var(--faint); }
+  .doca-item.ok .pt { background: var(--ok); } .doca-item.aviso .pt { background: var(--amber); } .doca-item.erro .pt { background: var(--err); }
+  .doca-item .rot {
+    position: absolute; top: calc(100% + 8px); left: 50%; translate: -50% 0; white-space: nowrap; padding: 3px 8px; border-radius: 4px; pointer-events: none;
+    background: var(--raised); border: 1px solid var(--line); color: var(--text); font: 11px var(--mono);
+    opacity: 0; transition: opacity .15s ease;
+  }
+  .doca-item .rot b { font-weight: 500; }
+  .doca-item.ok .rot b { color: var(--ok); } .doca-item.aviso .rot b { color: var(--amber); } .doca-item.erro .rot b { color: var(--err); } .doca-item.off .rot b { color: var(--muted); }
+  .doca-item:hover .rot, .doca-item:focus-visible .rot { opacity: 1; }
+  /* Últimos ícones: rótulo alinhado à direita para não sair da tela. */
+  .doca-item:nth-last-child(-n+2) .rot { left: auto; right: 0; translate: none; }
+  .doca-item .rot { visibility: hidden; } .doca-item:hover .rot, .doca-item:focus-visible .rot { visibility: visible; }
+
+  nav.abas .wrap { display: flex; gap: 2px; overflow-x: auto; padding-top: 0; padding-bottom: 0; scrollbar-width: none; }
+  nav.abas { border-bottom: 1px solid var(--line-soft); }
+  .aba {
+    background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted);
+    font: 500 13px var(--mono); padding: 10px 14px 9px; white-space: nowrap;
+  }
+  .aba:hover { color: var(--text); }
+  .aba[aria-selected=true] { color: var(--text); border-bottom-color: var(--amber); }
+  .aba .ic { color: var(--faint); margin-right: 6px; }
+  /* Logo da ferramenta na aba (a Visão geral fica com o ícone ASCII). */
+  .aba { display: inline-flex; align-items: center; }
+  .logo-aba { width: 18px; height: 18px; border-radius: 5px; object-fit: contain; margin-right: 8px; background: var(--raised); padding: 2px; opacity: .7; filter: grayscale(.5); transition: opacity .2s ease, filter .2s ease, transform .2s ease; }
+  .logo-aba.cheia { padding: 0; }
+  .aba:hover .logo-aba, .aba[aria-selected=true] .logo-aba { opacity: 1; filter: none; }
+  .aba[aria-selected=true] .logo-aba { transform: scale(1.08); }
+  .aba[aria-selected=true] .ic { color: var(--amber); }
+  .aba .pt { margin-left: 8px; font-size: 9px; vertical-align: 2px; }
+  .aba .pt.ok { color: var(--ok); } .aba .pt.aviso { color: var(--amber); } .aba .pt.erro { color: var(--err); } .aba .pt.off { color: var(--faint); }
+
+  main { padding: 28px 0 72px; }
+
+  /* ---------- visão geral ---------- */
+  .hero { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 36px; align-items: center; padding: 20px 24px; }
+  /* Globo 3D: tons por luz (t1 escuro → t5 claro), oceano (o1–o3), grade (g), brilho (s), atmosfera (a). */
+  .palco { position: relative; display: grid; place-items: center; }
+  .palco::before {
+    content: ""; position: absolute; inset: 6%; border-radius: 50%; z-index: 0;
+    background: radial-gradient(circle at 36% 32%, #e5a93b1f, transparent 62%);
+    box-shadow: 0 0 60px 6px #e5a93b14;
+  }
+  .palco::after {
+    content: ""; position: absolute; left: 22%; right: 22%; bottom: -10px; height: 14px; border-radius: 50%;
+    background: radial-gradient(closest-side, #000c, transparent);
+  }
+  .globo { position: relative; z-index: 1; margin: 0; font: 7px/7px var(--mono); letter-spacing: 0; user-select: none; }
+  .mini-globo { position: relative; }
+  .globo i, .mini-globo i { font-style: normal; }
+  .t1 { color: #7a5a20; } .t2 { color: #9a7026; } .t3 { color: #c48d30; } .t4 { color: #e5a93b; } .t5 { color: #ffd88a; }
+  .o0 { color: #1c2129; } .o1 { color: #2b323c; } .o2 { color: #3b4451; } .o3 { color: #56606e; }
+  .g { color: #4a5464; } .s { color: #f3f5f8; } .a { color: #e5a93b55; } .a0 { color: #e5a93b1c; }
+  .hero h1 { font: 600 20px/1.3 var(--sans); margin: 0 0 4px; }
+  .hero .lead { color: var(--muted); margin: 0 0 22px; max-width: 54ch; }
+
+  /* Receitas: objetivos do usuário, cada um com o caminho entre as ferramentas (receitas.json). */
+  .receitas { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px; }
+  .receita {
+    display: grid; gap: 6px; text-align: left; padding: 10px 12px; border-radius: 4px;
+    background: var(--raised); border: 1px solid var(--line); color: var(--muted);
+    transition: border-color .25s ease, background-color .25s ease, transform .2s ease;
+  }
+  .receita:hover { border-color: var(--faint); transform: translateY(-1px); }
+  .receita[aria-expanded=true] { border-color: var(--amber); background: var(--amber-dim); }
+  .receita .tt { font: 600 13px/1.35 var(--sans); color: var(--text); }
+  .receita .fer { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font: 500 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--amber); }
+  .receita .fer .mais { color: var(--faint); }
+  .tag-exp { font: 500 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--faint); border: 1px solid var(--line); border-radius: 3px; padding: 0 5px; }
+  .receita-det { margin-top: 12px; padding: 18px 20px; display: grid; gap: 14px; border-color: #e5a93b55; }
+  .receita-det h2 { margin: 0; font: 600 16px var(--sans); display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; }
+  .receita-det .res { margin: 0; color: var(--muted); }
+  .receita-det ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; counter-reset: passo; }
+  .receita-det li { display: grid; grid-template-columns: 22px 58px minmax(0, 1fr); gap: 8px; align-items: baseline; font-size: 13px; counter-increment: passo; }
+  .receita-det li::before { content: counter(passo) "."; font: 12px var(--mono); color: var(--faint); }
+  .onde { font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; border-radius: 3px; padding: 1px 6px; text-align: center; white-space: nowrap; }
+  .onde.painel { color: var(--ok); border: 1px solid color-mix(in srgb, var(--ok) 45%, transparent); }
+  .onde.ia { color: var(--amber); border: 1px solid #e5a93b66; }
+  .receita-det .nota { margin: 0; font: 12px/1.5 var(--mono); color: var(--amber); }
+  .receita-det .pedido { margin: 0; font: 13px/1.5 var(--mono); color: var(--text); background: var(--bg); border: 1px solid var(--line-soft); border-radius: 3px; padding: 8px 10px; }
+  .receita-det .pedido::before { content: "› "; color: var(--amber); }
+
+  /* Dois jeitos de usar: manual (botões) ou pela IA (mesmos controles). */
+  .jeitos { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+  .jeito { padding: 14px 18px; }
+  .jeito p { margin: 0; font-size: 13px; line-height: 1.55; color: var(--muted); }
+  .jeito .jt { font: 600 14px var(--sans); color: var(--text); margin-bottom: 6px; }
+  .jeito .jt .ic { font: 600 12px var(--mono); color: var(--amber); margin-right: 8px; }
+  #secEnvio .cab { margin-top: 28px; }
+
+  /* Perfil no cartão de cada ferramenta: forte em / use para / não é para. */
+  .cartao .perfil { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; font-size: 12px; color: var(--muted); }
+  .cartao .perfil li::before { content: "+ "; color: var(--amber); font-family: var(--mono); }
+  .cartao .nao { margin: 0; font-size: 12px; color: var(--faint); }
+  .cartao .nao b { font: 500 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; margin-right: 6px; }
+  .cartao .fn-p { font: 500 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--amber); }
+
+  .cartoes { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+  .cartao {
+    padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; min-width: 0;
+    transition: border-color .3s ease, transform .3s ease, box-shadow .3s ease;
+  }
+  .cartao:hover { border-color: var(--line); transform: translateY(-2px); box-shadow: 0 10px 28px #0005; }
+  .cartao .marca-p { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .logo-p {
+    width: 44px; height: 44px; border-radius: 10px; object-fit: contain; background: var(--raised);
+    border: 1px solid var(--line-soft); padding: 5px; display: grid; place-items: center;
+    font: 600 13px var(--mono); color: var(--amber); transition: transform .3s ease;
+  }
+  img.logo-p.cheia { padding: 0; }
+  .cartao:hover .logo-p { transform: scale(1.06) rotate(-2deg); }
+  .cartao .topo-c { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .st { transition: color .3s ease; }
+  .cartao h3 { margin: 0; font: 600 15px var(--sans); }
+  .cartao h3 .ic { font: 600 13px var(--mono); color: var(--amber); margin-right: 8px; }
+  .cartao .tipo { font: 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
+  .cartao .resumo { font-size: 13px; color: var(--muted); margin: 0; }
+  .cartao dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; font: 12px var(--mono); }
+  .cartao dt { color: var(--faint); }
+  .cartao dd { margin: 0; color: var(--text); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cartao .acoes { margin-top: auto; }
+  .cartao.quebrado { border-color: #e5626b55; }
+
+  .ativ .item .origem { color: var(--amber); }
+
+  /* ---------- enviar vídeo ---------- */
+  .soltar {
+    display: grid; justify-items: center; gap: 6px; text-align: center; padding: 26px 18px; cursor: pointer;
+    border: 1px dashed var(--line); color: var(--muted); transition: border-color .2s ease, background-color .2s ease;
+  }
+  .soltar:hover, .soltar:focus-within { border-color: var(--faint); }
+  .soltar.chegando { border-color: var(--amber); background: var(--amber-dim); color: var(--text); }
+  .soltar .seta { font: 600 18px var(--mono); color: var(--amber); transition: transform .2s ease; }
+  .soltar.chegando .seta { transform: translateY(-3px); }
+  .soltar b { color: var(--text); font-weight: 600; }
+  .soltar .sub-s { font: 12px var(--mono); color: var(--faint); }
+  #envios .lista { margin-top: 10px; }
+  .usar { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; padding: 4px 2px 14px 48px; border-bottom: 1px solid var(--line-soft); }
+  .usar > p { grid-column: 1 / -1; margin: 0; font: 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
+  .usar-op {
+    display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; text-align: left; padding: 10px 12px; height: 100%;
+    border-radius: 4px; background: var(--raised); border: 1px solid var(--line); color: var(--muted);
+    transition: border-color .2s ease, transform .2s ease;
+  }
+  .usar-op:hover { border-color: var(--amber); transform: translateY(-1px); }
+  .usar-op:disabled { opacity: .5; transform: none; }
+  .usar-op .ic { grid-row: span 3; font: 600 12px var(--mono); color: var(--amber); padding-top: 1px; }
+  .usar-op b { font: 600 13px var(--sans); color: var(--text); }
+  .usar-op .ds { font-size: 12px; line-height: 1.4; }
+  .usar-op .av { font: 11px/1.4 var(--mono); color: var(--amber); margin-top: 4px; }
+  @media (max-width: 760px) { .usar { padding-left: 2px; } }
+
+  /* ---------- player ---------- */
+  dialog { background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 0; width: min(920px, calc(100vw - 32px)); }
+  dialog::backdrop { background: #000a; }
+  .dlg-cab { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); font: 12px var(--mono); color: var(--muted); }
+  .dlg-cab b { color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dlg-corpo video, .dlg-corpo audio { display: block; width: 100%; max-height: 70vh; background: #000; }
+  .dlg-corpo audio { background: none; padding: 20px; }
+  .dlg-corpo pre { margin: 0; padding: 14px; max-height: 70vh; overflow: auto; font: 12px/1.5 var(--mono); color: var(--muted); white-space: pre-wrap; }
+
+  /* ---------- ícones flutuantes (andamento de um plugin nas outras abas) ---------- */
+  .flutuantes { position: fixed; left: 18px; bottom: 18px; z-index: 25; display: flex; flex-direction: column-reverse; gap: 12px; align-items: flex-start; }
+  .flut {
+    --z: 1; position: relative; display: flex; align-items: center; gap: 0; padding: 0; border: 0; background: none;
+    cursor: grab; touch-action: none; transform: scale(var(--z)); transform-origin: 0 100%;
+    transition: transform .18s cubic-bezier(.2, .8, .2, 1); animation: flutuar 4s ease-in-out infinite;
+  }
+  .flut.arrastando { cursor: grabbing; transition: none; animation: none; }
+  .flut:hover { animation-play-state: paused; }
+  .flut .anel { position: relative; width: 52px; height: 52px; flex: none; filter: drop-shadow(0 8px 18px #000a); }
+  .flut .anel svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+  .flut .anel circle { fill: none; stroke-width: 3; }
+  .flut .anel .fundo { stroke: var(--line); }
+  .flut .anel .prog { stroke: var(--amber); stroke-linecap: round; transition: stroke-dashoffset .6s ease; }
+  .flut.sem-sinal .anel .prog { stroke: var(--err); }
+  .flut .anel .ico {
+    position: absolute; inset: 6px; border-radius: 50%; display: grid; place-items: center; overflow: hidden;
+    background: var(--raised); border: 1px solid var(--line); font: 600 11px var(--mono); color: var(--amber);
+  }
+  .flut .anel img.ico { object-fit: contain; padding: 7px; }
+  .flut .anel .pt { position: absolute; right: 2px; bottom: 2px; width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--bg); background: var(--amber); animation: pulsar 1.6s ease-in-out infinite; }
+  .flut.sem-sinal .anel .pt { background: var(--err); animation: none; }
+  @keyframes pulsar { 50% { box-shadow: 0 0 0 4px #e5a93b33; } }
+  .flut .extra { position: absolute; left: 38px; top: -4px; font: 600 10px var(--mono); background: var(--amber); color: #1b1408; border-radius: 8px; padding: 0 5px; }
+  /* Detalhe: aparece quando o cursor chega perto, junto com a lupa. */
+  .flut .info {
+    display: grid; gap: 3px; text-align: left; margin-left: 10px; padding: 8px 12px; min-width: 210px; max-width: 280px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 10px 28px #0008;
+    font: 11px var(--mono); color: var(--muted);
+    opacity: 0; translate: -6px 0; pointer-events: none; transition: opacity .18s ease, translate .18s ease;
+  }
+  .flut.perto .info, .flut:focus-visible .info { opacity: 1; translate: 0 0; }
+  /* Esperando você (login, autorização): o detalhe fica aberto sem precisar chegar perto. */
+  .flut.atencao .info { opacity: 1; translate: 0 0; border-color: var(--amber); }
+  .flut.atencao .anel .pt { animation-duration: .8s; }
+  .flut .info b { font: 600 13px var(--sans); color: var(--text); }
+  .flut .info .det { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ---------- avisos ---------- */
+  .avisos { position: fixed; right: 16px; bottom: 16px; display: grid; gap: 8px; z-index: 30; max-width: min(420px, calc(100vw - 32px)); }
+  .aviso-t { background: var(--raised); border: 1px solid var(--line); border-left: 3px solid var(--amber); border-radius: 4px; padding: 10px 14px; font: 12px var(--mono); box-shadow: 0 8px 24px #0006; }
+  .aviso-t { animation: chegar .35s cubic-bezier(.2, .8, .2, 1); }
+  @keyframes chegar { from { opacity: 0; transform: translateY(10px); } }
+  .aviso-t.erro { border-left-color: var(--err); }
+
+  /* Troca de aba: entra suave. */
+  section.entrando { animation: entrar .32s cubic-bezier(.2, .8, .2, 1); }
+  @keyframes entrar { from { opacity: 0; transform: translateY(8px); } }
+  .aba { transition: color .2s ease, border-color .25s ease; }
+  .aba .pt { transition: color .4s ease; }
+  .spin::before { animation-duration: .8s; }
+  .movimento-reduzido *, .movimento-reduzido *::before, .movimento-reduzido *::after { animation: none !important; transition: none !important; }
+  .aviso-t.erro::before { content: "[!] "; color: var(--err); }
+  .aviso-t.ok::before { content: "[ok] "; color: var(--ok); }
+
+  .falha { font: 13px var(--mono); color: var(--err); }
+
+  @media (max-width: 760px) {
+    .hero { grid-template-columns: 1fr; justify-items: start; padding: 16px; gap: 18px; }
+    .palco { justify-self: center; }
+    .sub { display: none; }
+  }
+</style>
+</head>
+<body>
+<header class="topo">
+  <div class="wrap">
+    <div class="marca">
+      <pre class="mini-globo" id="miniGlobo" aria-hidden="true"></pre>
+      <span class="logo">Painel</span>
+      <span class="sub">// central do estúdio de vídeo</span>
+    </div>
+    <div class="chips" id="chips"></div>
+  </div>
+  <nav class="abas" aria-label="Seções"><div class="wrap" id="abas" role="tablist"></div></nav>
+</header>
+
+<main class="wrap" id="principal">
+  <section id="sec-geral" data-aba="geral">
+    <div class="bloco hero">
+      <div class="palco"><pre class="globo" id="globo" aria-hidden="true"></pre></div>
+      <div>
+        <h1>O que você quer fazer?</h1>
+        <p class="lead">Escolha um objetivo e veja o caminho entre as ferramentas. Você faz pelos botões do Painel ou pede à IA.</p>
+        <div class="receitas" id="receitas"></div>
+      </div>
+    </div>
+    <div id="receitaDet"></div>
+
+    <div class="cab"><p class="rotulo">Dois jeitos de usar</p></div>
+    <div class="jeitos">
+      <div class="bloco jeito">
+        <p class="jt"><span class="ic">[▸]</span>Manual</p>
+        <p>Você clica: envia o vídeo, escolhe o que fazer e acompanha. Os passos marcados <span class="onde painel">painel</span> têm botão aqui.</p>
+      </div>
+      <div class="bloco jeito">
+        <p class="jt"><span class="ic">[✦]</span>Pela IA</p>
+        <p>Você pede em português ao Claude Code aberto na pasta do estúdio. Ele usa os mesmos botões e comandos, e tudo aparece aqui ao vivo: processos, progresso, ícone flutuante. Dá para cancelar ou assumir no meio. Os passos <span class="onde ia">IA</span> dependem dela por enquanto.</p>
+      </div>
+    </div>
+
+    <div id="secEnvio" hidden>
+      <div class="cab"><p class="rotulo">Enviar vídeo</p><span class="contagem" id="destEnvio"></span></div>
+      <label class="bloco soltar" id="soltar">
+        <input type="file" id="escolherArq" multiple accept="video/*,audio/*,.mkv" hidden>
+        <span class="seta" aria-hidden="true">[↑]</span>
+        <span><b>Arraste seus vídeos para cá</b> ou clique para escolher</span>
+        <span class="sub-s">Depois você escolhe o que fazer: legendas, transcrição, cortes. Pode soltar em qualquer lugar desta aba.</span>
+      </label>
+      <div id="envios"></div>
+    </div>
+
+    <div class="cab"><p class="rotulo">As ferramentas</p><span class="contagem" id="contPlugins"></span></div>
+    <div class="cartoes" id="cartoes"></div>
+
+    <div class="cab"><p class="rotulo">Atividade</p><span class="contagem" id="contAtiv"></span></div>
+    <div class="ativ" id="atividade"></div>
+  </section>
+</main>
+
+<dialog id="player">
+  <div class="dlg-cab"><b id="playerTitulo"></b><button class="acao" id="playerFechar">[x] fechar</button></div>
+  <div class="dlg-corpo" id="playerCorpo"></div>
+</dialog>
+<div class="flutuantes" id="flutuantes"></div>
+<div class="avisos" id="avisos" aria-live="polite"></div>
+
+<script type="module">
+import * as ui from '/core/ui.js';
+import { girarGlobo } from '/core/globo.js';
+const { esc, simbolo, atras, barra, desenhar } = ui;
+
+const $ = (s) => document.querySelector(s);
+const manifestos = [];
+const estados = {};
+const modulos = {};   // id → módulo ui.js carregado
+const montados = {};  // id → elemento da aba já montada
+let abaAtual = 'geral';
+
+
+// ---------- comunicação ----------
+async function api(url, corpo) {
+  const r = await fetch(url, corpo ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) } : undefined);
+  const dados = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(dados.erro || `HTTP ${r.status}`);
+  return dados;
+}
+
+function avisar(texto, tipo = 'ok') {
+  const el = document.createElement('div');
+  el.className = `aviso-t ${tipo}`;
+  el.textContent = texto;
+  $('#avisos').append(el);
+  setTimeout(() => el.remove(), tipo === 'erro' ? 8000 : 4000);
+}
+
+// O que cada plugin recebe na própria interface.
+function criarCtx(m) {
+  return {
+    id: m.id,
+    manifesto: m,
+    ui,
+    estado: () => estados[m.id],
+    async acao(nome, params = {}) {
+      try {
+        const r = await api(`/api/plugins/${m.id}/acao`, { acao: nome, ...params });
+        if (r?.mensagem) avisar(r.mensagem);
+        atualizarPlugin(m.id);
+        return r;
+      } catch (e) {
+        avisar(e.message, 'erro');
+        throw e;
+      }
+    },
+    avisar,
+    abrirPlayer,
+    irPara,
+    atualizar: () => atualizarPlugin(m.id),
+    urlArquivo: (caminho) => `/api/arquivo?caminho=${encodeURIComponent(caminho)}`,
+  };
+}
+
+// ---------- abas ----------
+function desenharAbas() {
+  const itens = [{ id: 'geral', icone: '[◎]', nome: 'Visão geral' }, ...manifestos.filter((m) => m.temUI && !m.desativado && !m.erro)];
+  $('#abas').innerHTML = itens.map((m) => {
+    const st = estados[m.id]?.status;
+    return `<button class="aba" role="tab" data-ir="${m.id}" aria-selected="${m.id === abaAtual}">${m.logo ? `<img class="logo-aba ${m.logo.endsWith('.png') ? 'cheia' : ''}" src="${esc(m.logo)}" alt="">` : `<span class="ic">${esc(m.icone)}</span>`}${esc(m.nome)}${st ? `<span class="pt ${esc(st)}">●</span>` : ''}</button>`;
+  }).join('');
+}
+
+async function irPara(id) {
+  const m = manifestos.find((x) => x.id === id);
+  if (id !== 'geral' && !m?.temUI) return;
+  abaAtual = id;
+  desenharFlutuantes();
+  if (location.hash.slice(1) !== id) history.replaceState(null, '', id === 'geral' ? location.pathname : `#${id}`);
+  for (const sec of document.querySelectorAll('[data-aba]')) {
+    sec.hidden = sec.dataset.aba !== id;
+    sec.classList.remove('entrando');
+    if (!sec.hidden) requestAnimationFrame(() => sec.classList.add('entrando'));
+  }
+  desenharAbas();
+  if (id !== 'geral' && !montados[id]) await montar(m);
+  if (id !== 'geral') atualizarPlugin(id);
+}
+
+async function montar(m) {
+  const sec = document.createElement('section');
+  sec.dataset.aba = m.id;
+  sec.dataset.plugin = m.id;
+  $('#principal').append(sec);
+  montados[m.id] = sec;
+  try {
+    modulos[m.id] = (await import(`/plugins/${m.id}/ui.js`)).default;
+    m.ctx = criarCtx(m);
+    await modulos[m.id].montar(sec, m.ctx);
+    if (estados[m.id]) modulos[m.id].atualizar?.(estados[m.id], m.ctx);
+  } catch (e) {
+    sec.innerHTML = `<p class="falha">[!] A interface de ${esc(m.nome)} falhou ao carregar: ${esc(e.message)}</p>`;
+  }
+}
+
+// ---------- estado ----------
+async function carregarTudo() {
+  try {
+    Object.assign(estados, await api('/api/estado'));
+  } catch {
+    return desenhar($('#chips'), '<span class="falha-srv">[!] servidor do Painel fora do ar</span>');
+  }
+  desenharGeral();
+  desenharAbas();
+  desenharFlutuantes();
+  for (const id of Object.keys(montados)) modulos[id]?.atualizar?.(estados[id], manifestos.find((m) => m.id === id).ctx);
+}
+
+const pendentes = new Map();
+function atualizarPlugin(id) {
+  clearTimeout(pendentes.get(id));
+  pendentes.set(id, setTimeout(async () => {
+    try {
+      estados[id] = await api(`/api/plugins/${id}/estado`);
+    } catch {
+      return;
+    }
+    desenharGeral();
+    desenharAbas();
+    desenharFlutuantes();
+    const m = manifestos.find((x) => x.id === id);
+    if (montados[id]) modulos[id]?.atualizar?.(estados[id], m.ctx);
+  }, 250));
+}
+
+// ---------- visão geral ----------
+function desenharGeral() {
+  const ativos = manifestos.filter((m) => !m.desativado);
+
+  desenhar($('#chips'), ativos.map((m) => {
+    const st = m.erro ? 'erro' : estados[m.id]?.status || 'off';
+    const rotulo = m.erro ? 'falhou' : estados[m.id]?.rotulo || st;
+    const ico = m.logo
+      ? `<img class="ico ${m.logo.endsWith('.png') ? 'cheia' : ''}" src="${esc(m.logo)}" alt="">`
+      : `<span class="ico">${esc(m.icone)}</span>`;
+    return `<button class="doca-item ${st}" data-ir="${m.id}" aria-label="${esc(m.nome)}: ${esc(rotulo)}">${ico}<i class="pt"></i><span class="rot">${esc(m.nome)} <b>${esc(rotulo)}</b></span></button>`;
+  }).join(''));
+  // Espaço reservado para a ampliação: a doca não muda de largura nem empurra o resto do topo.
+  $('#chips').style.minWidth = `${ativos.length * 44 + 56}px`;
+  lupa();
+
+  desenharReceitas();
+
+  $('#contPlugins').textContent = `${ativos.length} carregados · plugins/`;
+  desenhar($('#cartoes'), ativos.map((m) => {
+    const e = estados[m.id] || {};
+    if (m.erro) {
+      return `<article class="bloco cartao quebrado"><div class="topo-c"><h3><span class="ic">[!]</span>${esc(m.nome)}</h3><span class="tipo">plugin</span></div><p class="resumo falha">${esc(m.erro)}</p></article>`;
+    }
+    const metricas = (e.metricas || []).map(([k, v]) => `<dt>${esc(k)}</dt><dd title="${esc(v)}">${esc(v)}</dd>`).join('');
+    const logo = m.logo
+      ? `<img class="logo-p ${m.logo.endsWith('.png') ? 'cheia' : ''}" src="${esc(m.logo)}" alt="Logo ${esc(m.nome)}" width="44" height="44">`
+      : `<span class="logo-p" aria-hidden="true">${esc(m.icone)}</span>`;
+    return `<article class="bloco cartao" data-plugin="${m.id}">
+      <div class="marca-p">${logo}<span class="tipo">${esc(m.tipo)}</span></div>
+      <div class="topo-c"><h3><span class="ic">${esc(m.icone)}</span>${esc(m.nome)}</h3></div>
+      <div class="st ${esc(e.status || 'off')}">${simbolo(e.status || 'off')} ${esc(e.rotulo || 'carregando…')}</div>
+      ${m.papel ? `<span class="fn-p">${esc(m.papel)}</span>` : ''}
+      ${e.resumo ? `<p class="resumo">${esc(e.resumo)}</p>` : `<p class="resumo">${esc(m.perfil?.forte || m.descricao)}</p>`}
+      ${m.perfil?.usos.length ? `<ul class="perfil">${m.perfil.usos.map((u) => `<li>${esc(u)}</li>`).join('')}</ul>` : ''}
+      ${m.perfil?.naoE ? `<p class="nao"><b>não é para</b>${esc(m.perfil.naoE)}</p>` : ''}
+      ${metricas ? `<dl>${metricas}</dl>` : ''}
+      <div class="acoes">${m.temUI ? `<button class="acao forte" data-ir="${m.id}">abrir →</button>` : ''}${m.flutuante ? `<button class="acao" data-flutuante="${m.id}" aria-pressed="${flutuanteLigado(m.id)}" title="Mostra o andamento num ícone flutuante quando você estiver em outra aba">${flutuanteLigado(m.id) ? '[◉] flutuante' : '[○] flutuante'}</button>` : ''}${(e.atalhos || []).map((a) => `<button class="acao" data-acao="${esc(a.acao)}" data-params="${ui.attr(a.params || {})}">${esc(a.rotulo)}</button>`).join('')}</div>
+    </article>`;
+  }).join(''));
+
+  // Atividade unificada: processos do núcleo + itens que cada plugin informa (downloads, serviços do Colab…).
+  const itens = [];
+  for (const m of ativos) {
+    const e = estados[m.id];
+    if (!e) continue;
+    for (const p of e.processos || []) itens.push({ m, quando: p.fim || p.inicio, estado: p.estado, titulo: p.titulo, detalhe: p.erro || (p.url ? p.url : ''), progresso: p.progresso, cancelar: p.estado === 'rodando' ? p.id : null });
+    for (const a of e.atividade || []) itens.push({ m, ...a });
+  }
+  itens.sort((a, b) => (b.estado === 'rodando') - (a.estado === 'rodando') || (b.quando || 0) - (a.quando || 0));
+  const rodando = itens.filter((i) => i.estado === 'rodando').length;
+  $('#contAtiv').textContent = itens.length ? `${rodando} em andamento · ${itens.length} no total` : '';
+  desenhar($('#atividade'), ui.lista(itens.slice(0, 14).map((i) => `<div class="item proc ${esc(i.estado)}" data-plugin="${i.m.id}">
+      <span class="tp">${simbolo(i.estado)}</span>
+      <div><div class="nome">${esc(i.titulo)}</div><div class="meta"><span class="origem">${esc(i.m.icone)} ${esc(i.m.nome)}</span> · ${esc(i.estado)}${i.quando ? ` · ${atras(i.quando)}` : ''}${i.detalhe ? ` · ${esc(i.detalhe)}` : ''}</div></div>
+      <div>${i.estado === 'rodando' || i.progresso != null ? barra(i.progresso ?? null, 14) : ''}</div>
+      <div class="acoes">${i.cancelar ? `<button class="acao" data-cancelar="${i.cancelar}">[x]</button>` : ''}<button class="acao" data-ir="${i.m.id}">→</button></div>
+    </div>`), 'Nada rodando agora. Baixe algo no PullCut ou abra um notebook no Colab.'));
+}
+
+// ---------- lupa da doca ----------
+// Cada ícone cresce conforme a distância do cursor (até 1,7×, alcance de ~3 ícones), como a doca do macOS.
+let mouseX = null;
+function lupa() {
+  const doca = $('#chips');
+  doca.classList.toggle('ativa', mouseX !== null);
+  const itens = [...doca.querySelectorAll('.doca-item')];
+  // Centros em repouso, medidos da borda direita (fixa): medir a posição já ampliada faria a lupa tremer.
+  const direita = doca.getBoundingClientRect().right - 4;
+  itens.forEach((it, i) => {
+    let z = 1;
+    if (mouseX !== null) {
+      const centro = direita - (itens.length - 1 - i) * 44 - 17;
+      const d = Math.abs(mouseX - centro) / 90;
+      z = d < 1 ? 1 + 0.7 * Math.cos(d * Math.PI / 2) ** 2 : 1;
+    }
+    it.style.setProperty('--z', z.toFixed(3));
+  });
+}
+$('#chips').addEventListener('mousemove', (ev) => {
+  mouseX = ev.clientX;
+  requestAnimationFrame(lupa);
+});
+$('#chips').addEventListener('mouseleave', () => {
+  mouseX = null;
+  lupa();
+});
+
+// ---------- ícones flutuantes ----------
+// Plugins com manifesto.flutuante mostram o andamento (estado.flutuante) num ícone que flutua sobre as
+// outras abas. Liga/desliga no cartão; a preferência e a posição ficam neste navegador.
+const ler = (k, padrao) => { try { return localStorage.getItem(k) ?? padrao; } catch { return padrao; } };
+const gravar = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+const flutuanteLigado = (id) => ler(`painel.flutuante.${id}`, '1') === '1';
+
+function alternarFlutuante(id) {
+  const ligado = !flutuanteLigado(id);
+  gravar(`painel.flutuante.${id}`, ligado ? '1' : '0');
+  avisar(`Ícone flutuante ${ligado ? 'ligado' : 'desligado'}.`);
+  desenharGeral();
+  desenharFlutuantes();
+}
+
+const caixaFlut = $('#flutuantes');
+try {
+  const pos = JSON.parse(ler('painel.flutuante.posicao', 'null'));
+  if (pos) Object.assign(caixaFlut.style, { left: `${pos.x}px`, bottom: `${pos.y}px` });
+} catch {}
+
+function desenharFlutuantes() {
+  const html = manifestos.filter((m) => m.flutuante && !m.desativado && flutuanteLigado(m.id) && m.id !== abaAtual && estados[m.id]?.flutuante)
+    .map((m) => {
+      const f = estados[m.id].flutuante;
+      const volta = 2 * Math.PI * 22;
+      const pct = Math.max(0, Math.min(100, f.progresso ?? 0));
+      const ico = m.logo ? `<img class="ico" src="${esc(m.logo)}" alt="">` : `<span class="ico">${esc(m.icone)}</span>`;
+      return `<button class="flut ${esc(f.estado || '')}" data-ir="${m.id}" aria-label="${esc(m.nome)}: ${esc(f.titulo)}${f.progresso != null ? ` ${Math.round(pct)}%` : ''}">
+        <span class="anel"><svg viewBox="0 0 52 52"><circle class="fundo" cx="26" cy="26" r="22"/><circle class="prog" cx="26" cy="26" r="22" stroke-dasharray="${volta.toFixed(1)}" stroke-dashoffset="${(volta * (1 - pct / 100)).toFixed(1)}"/></svg>${ico}<i class="pt"></i></span>
+        ${f.extra ? `<span class="extra">${esc(f.extra)}</span>` : ''}
+        <span class="info"><b>${esc(m.nome)} · ${esc(f.titulo)}</b><span class="det">${esc(f.estado === 'sem-sinal' ? 'sem sinal: confira a aba do Colab' : f.detalhe)}</span>${barra(f.progresso ?? null, 18)}</span>
+      </button>`;
+    }).join('');
+  desenhar(caixaFlut, html);
+  lupaFlutuante();
+}
+
+// Lupa: o ícone cresce conforme o cursor se aproxima (até 1,45×) e abre o detalhe quando está perto.
+let cursor = null;
+function lupaFlutuante() {
+  for (const el of caixaFlut.querySelectorAll('.flut')) {
+    if (el.classList.contains('arrastando')) continue;
+    let z = 1;
+    if (cursor) {
+      const r = el.querySelector('.anel').getBoundingClientRect();
+      const d = Math.hypot(cursor.x - (r.left + r.width / 2), cursor.y - (r.top + r.height / 2)) / 160;
+      z = d < 1 ? 1 + 0.45 * Math.cos((d * Math.PI) / 2) ** 2 : 1;
+    }
+    el.style.setProperty('--z', z.toFixed(3));
+    el.classList.toggle('perto', z > 1.25);
+  }
+}
+let quadroPendente = false;
+document.addEventListener('mousemove', (ev) => {
+  cursor = { x: ev.clientX, y: ev.clientY };
+  if (quadroPendente || !caixaFlut.firstElementChild) return;
+  quadroPendente = true;
+  requestAnimationFrame(() => { quadroPendente = false; lupaFlutuante(); });
+});
+document.addEventListener('mouseleave', () => { cursor = null; lupaFlutuante(); });
+
+// Arrastar para outro lugar da tela; um arrasto não conta como clique.
+let arrasto = null;
+caixaFlut.addEventListener('pointerdown', (ev) => {
+  const el = ev.target.closest('.flut');
+  if (!el || ev.button !== 0) return;
+  const r = caixaFlut.getBoundingClientRect();
+  arrasto = { el, x0: ev.clientX, y0: ev.clientY, left: r.left, bottom: innerHeight - r.bottom, moveu: false };
+  el.setPointerCapture(ev.pointerId);
+});
+caixaFlut.addEventListener('pointermove', (ev) => {
+  if (!arrasto) return;
+  const dx = ev.clientX - arrasto.x0;
+  const dy = ev.clientY - arrasto.y0;
+  if (!arrasto.moveu && Math.hypot(dx, dy) < 5) return;
+  arrasto.moveu = true;
+  arrasto.el.classList.add('arrastando');
+  const x = Math.max(8, Math.min(innerWidth - 70, arrasto.left + dx));
+  const y = Math.max(8, Math.min(innerHeight - 70, arrasto.bottom - dy));
+  Object.assign(caixaFlut.style, { left: `${x}px`, bottom: `${y}px` });
+});
+caixaFlut.addEventListener('pointerup', () => {
+  if (!arrasto) return;
+  if (arrasto.moveu) {
+    const r = caixaFlut.getBoundingClientRect();
+    gravar('painel.flutuante.posicao', JSON.stringify({ x: Math.round(r.left), y: Math.round(innerHeight - r.bottom) }));
+    arrasto.el.classList.remove('arrastando');
+    // Engole o clique que o navegador dispara logo depois de soltar.
+    addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); }, { capture: true, once: true });
+  }
+  arrasto = null;
+});
+
+// ---------- player ----------
+function abrirPlayer(caminho, titulo) {
+  const url = `/api/arquivo?caminho=${encodeURIComponent(caminho)}`;
+  const tipo = /\.(mp4|mov|webm|m4v|mkv)$/i.test(caminho) ? 'video' : /\.(mp3|m4a|wav|aac|ogg|opus)$/i.test(caminho) ? 'audio' : 'texto';
+  $('#playerTitulo').textContent = titulo || caminho.split(/[\\/]/).pop();
+  const corpo = $('#playerCorpo');
+  if (tipo === 'texto') {
+    corpo.innerHTML = '<pre>carregando…</pre>';
+    fetch(url).then((r) => r.text()).then((t) => { corpo.firstChild.textContent = t.slice(0, 200000); });
+  } else {
+    corpo.innerHTML = `<${tipo} src="${esc(url)}" controls autoplay></${tipo}>`;
+  }
+  $('#player').showModal();
+}
+$('#playerFechar').onclick = () => $('#player').close();
+$('#player').addEventListener('close', () => { $('#playerCorpo').innerHTML = ''; });
+
+// ---------- receitas ("O que você quer fazer?") ----------
+// Vêm de receitas.json (pelo /api/plugins), já filtradas pelas ferramentas ativas. Cada uma mostra o caminho
+// entre as ferramentas, quais passos têm botão no Painel e quais pedem a IA, e a frase para pedir à IA.
+const receitas = [];
+let receitaAberta = null;
+try { receitaAberta = sessionStorage.getItem('painel.receita'); } catch {}
+
+function desenharReceitas() {
+  const porId = (id) => manifestos.find((m) => m.id === id);
+  const ferramentas = (r) => r.ferramentas.map((id) => esc(porId(id)?.nome || id)).join('<span class="mais">+</span>');
+  desenhar($('#receitas'), receitas.map((r) => `
+    <button class="receita" data-receita="${esc(r.id)}" aria-expanded="${r.id === receitaAberta}" aria-controls="receitaDet">
+      <span class="tt">${esc(r.titulo)}</span>
+      <span class="fer">${ferramentas(r)}${r.estado === 'experimental' ? ' <span class="tag-exp">experimental</span>' : ''}</span>
+    </button>`).join(''));
+  const r = receitas.find((x) => x.id === receitaAberta);
+  desenhar($('#receitaDet'), r ? `<section class="bloco receita-det" aria-label="${esc(r.titulo)}">
+    <h2>${esc(r.titulo)}${r.estado === 'experimental' ? '<span class="tag-exp">experimental</span>' : ''}</h2>
+    <p class="res">${esc(r.resultado)}</p>
+    <ol>${r.passos.map((p) => `<li><span class="onde ${p.onde === 'ia' ? 'ia' : 'painel'}">${p.onde === 'ia' ? 'IA' : 'painel'}</span><span>${esc(p.texto)}</span></li>`).join('')}</ol>
+    ${r.nota ? `<p class="nota">[!] ${esc(r.nota)}</p>` : ''}
+    ${r.pedido ? `<p class="pedido">${esc(r.pedido)}</p>` : ''}
+    <div class="acoes">
+      ${r.inicio === 'enviar' ? '<button class="acao forte" data-comecar="enviar">[↑] começar: enviar vídeo</button>'
+        : r.inicio ? `<button class="acao forte" data-ir="${esc(r.inicio)}">[→] começar no ${esc(porId(r.inicio)?.nome || r.inicio)}</button>` : ''}
+      ${r.pedido ? `<button class="acao" data-copiar="${esc(r.pedido)}">[⧉] copiar pedido para a IA</button>` : ''}
+      <button class="acao" data-fechar-receita>[x] fechar</button>
+    </div>
+  </section>` : '');
+}
+
+document.addEventListener('click', async (ev) => {
+  const rc = ev.target.closest('[data-receita]');
+  const fechar = ev.target.closest('[data-fechar-receita]');
+  if (rc || fechar) {
+    receitaAberta = fechar || receitaAberta === rc.dataset.receita ? null : rc.dataset.receita;
+    try { receitaAberta ? sessionStorage.setItem('painel.receita', receitaAberta) : sessionStorage.removeItem('painel.receita'); } catch {}
+    desenharReceitas();
+    if (receitaAberta) $('#receitaDet').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    return;
+  }
+  if (ev.target.closest('[data-comecar=enviar]')) {
+    $('#secEnvio').scrollIntoView({ block: 'center', behavior: 'smooth' });
+    $('#soltar').classList.add('chegando');
+    setTimeout(() => $('#soltar').classList.remove('chegando'), 1200);
+    return;
+  }
+  const cp = ev.target.closest('[data-copiar]');
+  if (cp) {
+    try {
+      await navigator.clipboard.writeText(cp.dataset.copiar);
+      avisar('Pedido copiado. Cole no chat do Claude Code e ajuste o que estiver entre < >.');
+    } catch {
+      avisar('Não consegui copiar; selecione o texto do pedido e copie.', 'erro');
+    }
+  }
+});
+
+// ---------- enviar vídeo ----------
+// O plugin com manifesto.recebe guarda os arquivos (POST /api/enviar, aos poucos); os plugins com
+// manifesto.usar oferecem o que fazer com cada um. Um envio por vez, com progresso (XHR tem upload.onprogress).
+const envios = [];
+let proximoEnvio = 1;
+let enviando = false;
+const receptor = () => manifestos.find((m) => m.recebe && !m.desativado && !m.erro);
+const ESTADO_ENVIO = { esperando: 'rodando', enviando: 'rodando', pronto: 'concluido', erro: 'erro', cancelado: 'cancelado' };
+
+function enviarArquivos(arquivos) {
+  const r = receptor();
+  if (!r) return avisar('Nenhum plugin recebe vídeos (manifesto.recebe).', 'erro');
+  for (const f of arquivos) envios.unshift({ id: proximoEnvio++, f, nome: f.name, tamanho: f.size, enviado: 0, estado: 'esperando', plugin: r.id });
+  desenharEnvios();
+  enviarProximo();
+}
+
+function enviarProximo() {
+  const e = envios.findLast((x) => x.estado === 'esperando');
+  if (enviando || !e) return;
+  enviando = true;
+  e.estado = 'enviando';
+  const xhr = new XMLHttpRequest();
+  e.xhr = xhr;
+  const fim = (estado, erro) => {
+    Object.assign(e, { estado, erro: erro || null, f: null, xhr: null });
+    enviando = false;
+    desenharEnvios();
+    enviarProximo();
+  };
+  let ultimoDesenho = 0;
+  xhr.upload.onprogress = (ev) => {
+    e.enviado = ev.loaded;
+    if (Date.now() - ultimoDesenho > 200) { ultimoDesenho = Date.now(); desenharEnvios(); }
+  };
+  xhr.onload = () => {
+    let d = {};
+    try { d = JSON.parse(xhr.responseText); } catch {}
+    if (xhr.status !== 200) return fim('erro', d.erro || `HTTP ${xhr.status}`), avisar(e.erro, 'erro');
+    e.arquivo = d.arquivo;
+    e.nome = d.arquivo.nome;
+    e.enviado = e.tamanho;
+    avisar(`${e.nome} enviado. Escolha o que fazer com ele.`);
+    fim('pronto');
+  };
+  xhr.onerror = () => fim('erro', 'Perdi a conexão com o Painel no meio do envio.');
+  xhr.onabort = () => fim('cancelado', 'Envio cancelado.');
+  xhr.open('POST', `/api/enviar?plugin=${encodeURIComponent(e.plugin)}&nome=${encodeURIComponent(e.nome)}`);
+  xhr.setRequestHeader('X-Painel', 'enviar');
+  xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+  xhr.send(e.f);
+  desenharEnvios();
+}
+
+// O que dá para fazer com um arquivo enviado: um cartão por item de manifesto.usar.
+function opcoesDeUso(e) {
+  const opcoes = manifestos.filter((m) => !m.desativado && !m.erro).flatMap((m) => (m.usar || []).map((u) => ({ m, u })));
+  if (!opcoes.length) return '';
+  const { caminho, nome } = e.arquivo;
+  return `<div class="usar"><p>O que fazer com ele?</p>${opcoes.map(({ m, u }) => `
+    <div data-plugin="${esc(m.id)}">
+      <button class="usar-op" ${u.ir ? `data-usar-ir="${esc(m.id)}" data-caminho="${esc(caminho)}"` : `data-acao="${esc(u.acao)}" data-params="${ui.attr({ caminho, arquivo: nome })}"`}>
+        <span class="ic">${esc(m.icone)}</span><b>${esc(u.rotulo)}</b>
+        <span class="ds">${esc(m.nome)} · ${esc(u.descricao)}</span>
+        ${u.aviso ? `<span class="av">${esc(u.aviso)}</span>` : ''}
+      </button>
+    </div>`).join('')}</div>`;
+}
+
+function desenharEnvios() {
+  const r = receptor();
+  $('#secEnvio').hidden = !r;
+  if (!r) return;
+  $('#destEnvio').textContent = `vai para ${r.recebe.rotulo}`;
+  ui.desenhar($('#envios'), envios.length ? `<div class="lista">${envios.map((e) => {
+    const pct = e.tamanho ? (e.enviado / e.tamanho) * 100 : 0;
+    const texto = { esperando: 'na fila', enviando: `enviando · ${ui.tamanho(e.enviado)} de ${ui.tamanho(e.tamanho)}`, pronto: `em ${r.recebe.rotulo}`, erro: 'não enviado', cancelado: 'cancelado' }[e.estado];
+    const est = ESTADO_ENVIO[e.estado];
+    return `<div class="item proc ${est}" data-chave="e${e.id}">
+      <span class="tp">${ui.simbolo(est)}</span>
+      <div><div class="nome" title="${esc(e.nome)}">${esc(e.nome)}</div><div class="meta">${ui.tamanho(e.tamanho)} · ${texto}</div>
+        ${e.erro && e.estado === 'erro' ? `<div class="msg-erro">${esc(e.erro)}</div>` : ''}</div>
+      <div>${ui.barra(e.estado === 'pronto' ? 100 : e.estado === 'erro' || e.estado === 'cancelado' ? null : pct, 14)}</div>
+      <div class="acoes">
+        ${e.estado === 'enviando' || e.estado === 'esperando' ? `<button class="acao" data-cancelar-envio="${e.id}">[x] cancelar</button>` : ''}
+        ${e.estado === 'pronto' ? `<button class="acao" data-tocar="${esc(e.arquivo.caminho)}">[>] tocar</button><button class="acao" data-mostrar="${esc(e.arquivo.caminho)}" title="Mostrar no Explorer">[↗]</button>` : ''}
+      </div>
+    </div>${e.estado === 'pronto' ? opcoesDeUso(e) : ''}`;
+  }).join('')}</div>` : '');
+}
+
+$('#escolherArq').addEventListener('change', (ev) => {
+  enviarArquivos([...ev.target.files]);
+  ev.target.value = '';
+});
+$('#envios').addEventListener('click', (ev) => {
+  const c = ev.target.closest('[data-cancelar-envio]');
+  if (c) {
+    const e = envios.find((x) => x.id === Number(c.dataset.cancelarEnvio));
+    if (e?.xhr) e.xhr.abort();
+    else if (e?.estado === 'esperando') { e.estado = 'cancelado'; desenharEnvios(); }
+    return;
+  }
+  // "Legendas e efeitos": abre a aba do plugin com o arquivo já escolhido (ele lê painel.usar.<id>).
+  const ir = ev.target.closest('[data-usar-ir]');
+  if (ir) {
+    try { sessionStorage.setItem(`painel.usar.${ir.dataset.usarIr}`, ir.dataset.caminho); } catch {}
+    irPara(ir.dataset.usarIr);
+  }
+});
+// Arrastar arquivos: solta em qualquer lugar da Visão geral. Fora dela, o navegador não pode abrir o vídeo
+// por cima do Painel (o que perderia a página), então o soltar é só ignorado.
+const temArquivos = (ev) => [...(ev.dataTransfer?.types || [])].includes('Files');
+let saidaArraste;
+addEventListener('dragover', (ev) => {
+  if (!temArquivos(ev)) return;
+  ev.preventDefault();
+  const pode = abaAtual === 'geral' && receptor();
+  ev.dataTransfer.dropEffect = pode ? 'copy' : 'none';
+  $('#soltar').classList.toggle('chegando', Boolean(pode));
+  clearTimeout(saidaArraste);
+  saidaArraste = setTimeout(() => $('#soltar').classList.remove('chegando'), 150);
+});
+addEventListener('drop', (ev) => {
+  if (!temArquivos(ev)) return;
+  ev.preventDefault();
+  $('#soltar').classList.remove('chegando');
+  if (abaAtual === 'geral' && receptor()) enviarArquivos([...ev.dataTransfer.files]);
+  else avisar('Para enviar vídeos, solte na Visão geral.', 'erro');
+});
+addEventListener('beforeunload', (ev) => {
+  if (envios.some((e) => e.estado === 'enviando' || e.estado === 'esperando')) ev.preventDefault();
+});
+
+// ---------- cliques declarativos (ver /core/ui.js) ----------
+document.addEventListener('click', async (ev) => {
+  const f = ev.target.closest('[data-flutuante]');
+  if (f) {
+    alternarFlutuante(f.dataset.flutuante);
+    return;
+  }
+  const b = ev.target.closest('[data-ir],[data-acao],[data-pasta],[data-mostrar],[data-tocar],[data-cancelar],[data-abrir]');
+  if (!b || b.disabled) return;
+  const plugin = b.closest('[data-plugin]')?.dataset.plugin;
+  const m = manifestos.find((x) => x.id === plugin);
+  try {
+    if (b.dataset.ir) return irPara(b.dataset.ir);
+    if (b.dataset.abrir) return window.open(b.dataset.abrir, '_blank', 'noopener');
+    if (b.dataset.tocar) return abrirPlayer(b.dataset.tocar);
+    if (b.dataset.confirmar && !confirm(b.dataset.confirmar)) return;
+    b.disabled = true;
+    if (b.dataset.acao) await (m.ctx || (m.ctx = criarCtx(m))).acao(b.dataset.acao, JSON.parse(b.dataset.params || '{}')).catch(() => {});
+    else if (b.dataset.pasta) await api('/api/core', { acao: 'abrirPasta', plugin, pasta: b.dataset.pasta });
+    else if (b.dataset.mostrar) await api('/api/core', { acao: 'mostrar', caminho: b.dataset.mostrar });
+    else if (b.dataset.cancelar) {
+      await api('/api/core', { acao: 'cancelar', id: b.dataset.cancelar });
+      avisar('Cancelado.');
+    }
+  } catch (e) {
+    avisar(e.message, 'erro');
+  } finally {
+    b.disabled = false;
+    if (plugin) atualizarPlugin(plugin);
+  }
+});
+
+// ---------- início ----------
+try {
+  const { plugins, animacoes, receitas: lista } = await api('/api/plugins');
+  manifestos.push(...plugins);
+  receitas.push(...(lista || []));
+  // "sempre" (padrão): anima mesmo com o Windows em modo de menos movimento; "sistema": obedece ao Windows.
+  if (animacoes === 'sistema' && matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.classList.add('movimento-reduzido');
+} catch (e) {
+  $('#cartoes').innerHTML = `<p class="falha">[!] Não consegui falar com o servidor do Painel: ${esc(e.message)}. Rode Painel.cmd.</p>`;
+}
+girarGlobo($('#globo'), { linhas: 31 });
+girarGlobo($('#miniGlobo'), { linhas: 7, grausPorSegundo: 16 });
+desenharAbas();
+desenharEnvios();
+await carregarTudo();
+const inicial = location.hash.slice(1);
+if (inicial) irPara(inicial);
+
+const eventos = new EventSource('/api/eventos');
+const aoEvento = (ev) => {
+  const d = JSON.parse(ev.data);
+  if (d.plugin) atualizarPlugin(d.plugin);
+};
+for (const tipo of ['processo', 'plugin']) eventos.addEventListener(tipo, aoEvento);
+setInterval(() => { if (!document.hidden) carregarTudo(); }, 5000);
+</script>
+</body>
+</html>

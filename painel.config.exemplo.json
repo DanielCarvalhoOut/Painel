@@ -1,0 +1,13 @@
+{
+  "porta": 4700,
+  "animacoes": "sempre",
+  "drive": "G:\\Meu Drive\\EditorVideos",
+  "ferramentas": "",
+  "desativados": [],
+  "plugins": {
+    "pullcut": { "iniciarJunto": true },
+    "hyperframes": { "workers": 1 },
+    "filmcraft": { "portaControle": 9876 },
+    "colab": { "semSinalAposSegundos": 120, "distro": "Ubuntu" }
+  }
+}
