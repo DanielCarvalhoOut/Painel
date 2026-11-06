@@ -15,7 +15,7 @@ import { existsSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MAQUINAS, TAREFAS, OPCOES, lerPerfis, gravarJson, normalizarPerfil, nomeSessao, argsMaquina } from './maquinas.mjs';
+import { MAQUINAS, TAREFAS, OPCOES, lerPerfis, gravarJson, normalizarPerfil, nomeSessao, argsMaquina, nomeDeMidia } from './maquinas.mjs';
 
 const PAINEL = path.resolve(fileURLToPath(import.meta.url), '../../..');
 const QUALIDADES = ['draft', 'looks', 'delivery'];
@@ -119,11 +119,13 @@ async function conferirSessoes(ctx) {
 }
 
 // ---------- tarefas na nuvem ----------
-const perfilAtivo = () => mem.perfis.perfis[mem.ativo] || Object.values(mem.perfis.perfis)[0];
+// Perfil pelo id, só entre os próprios (um id como "constructor" ou "__proto__" não é perfil).
+const perfilDe = (id) => (typeof id === 'string' && Object.hasOwn(mem.perfis.perfis, id) ? mem.perfis.perfis[id] : null);
+const perfilAtivo = () => perfilDe(mem.ativo) || Object.values(mem.perfis.perfis)[0];
 
 function tarefaNaNuvem(ctx, tipo, perfilId, resto, extra) {
   if (ctx.processos.ativos().some((p) => TAREFAS[p.tipo])) throw new Error('Já tem uma tarefa rodando no Colab. Espere terminar ou cancele.');
-  const perfil = mem.perfis.perfis[perfilId] || perfilAtivo();
+  const perfil = perfilDe(perfilId) || perfilAtivo();
   const t = perfil.tarefas[tipo];
   const sessao = nomeSessao(t);
   // A sessão vai ser usada agora: o cronômetro de desligar para até a tarefa terminar.
@@ -358,13 +360,15 @@ export default {
   acoes: {
     // Transcreve o que estiver novo em HyperFrames/entrada (ou só `arquivo`) na máquina do perfil.
     async transcrever({ arquivo, perfil } = {}, ctx) {
+      // O nome vai para o notebook como variável de ambiente: só um vídeo/áudio de HyperFrames/entrada, sem pastas.
+      if (arquivo && !nomeDeMidia(arquivo)) throw new Error('Arquivo inválido: use o nome de um vídeo ou áudio de HyperFrames/entrada.');
       tarefaNaNuvem(ctx, 'transcrever', perfil, arquivo ? [String(arquivo)] : [], { titulo: 'Transcrever', alvo: arquivo || 'entrada' });
       return { mensagem: 'Ligando a máquina no Colab…' };
     },
 
     // Renderiza uma composição no Colab (CPU com RAM alta no perfil de fábrica).
     async renderizar({ composicao, qualidade, perfil } = {}, ctx) {
-      if (!/^[\w.-]+$/.test(composicao || '')) throw new Error('Informe o nome da composição (pasta em HyperFrames/composicoes).');
+      if (!/^\w[\w.-]{0,99}$/.test(String(composicao ?? '')) || String(composicao).includes('..')) throw new Error('Informe o nome da composição (pasta em HyperFrames/composicoes).');
       const q = QUALIDADES.includes(qualidade) ? qualidade : 'looks';
       tarefaNaNuvem(ctx, 'renderizar', perfil, [composicao, q], { titulo: `Renderizar "${composicao}" (${q})`, alvo: composicao });
       return { mensagem: `Render de "${composicao}" no Colab iniciado.` };
@@ -544,15 +548,15 @@ export default {
 
     // ----- perfis de máquina -----
     async usarPerfil({ id } = {}) {
-      if (!mem.perfis.perfis[id]) throw new Error('Perfil não encontrado.');
+      if (!perfilDe(id)) throw new Error('Perfil não encontrado.');
       mem.ativo = id;
-      return { mensagem: `Usando o perfil "${mem.perfis.perfis[id].nome}".` };
+      return { mensagem: `Usando o perfil "${perfilDe(id).nome}".` };
     },
 
     async salvarPerfil({ id, nome, tarefas, padrao } = {}, ctx) {
       const perfil = normalizarPerfil({ nome, tarefas });
-      let chave = id && mem.perfis.perfis[id] ? id : ctx.util.slug(perfil.nome) || `perfil-${Date.now()}`;
-      if (!id) while (mem.perfis.perfis[chave]) chave = `${chave}-2`;
+      let chave = perfilDe(id) ? id : ctx.util.slug(perfil.nome).slice(0, 34) || `perfil-${Date.now()}`;
+      if (!perfilDe(id)) while (Object.hasOwn(mem.perfis.perfis, chave)) chave = `${chave}-2`;
       mem.perfis.perfis[chave] = perfil;
       if (padrao) mem.perfis.padrao = chave;
       mem.ativo = chave;
@@ -561,7 +565,7 @@ export default {
     },
 
     async apagarPerfil({ id } = {}) {
-      if (!mem.perfis.perfis[id]) throw new Error('Perfil não encontrado.');
+      if (!perfilDe(id)) throw new Error('Perfil não encontrado.');
       if (Object.keys(mem.perfis.perfis).length === 1) throw new Error('Precisa sobrar pelo menos um perfil.');
       delete mem.perfis.perfis[id];
       const primeiro = Object.keys(mem.perfis.perfis)[0];
@@ -572,10 +576,10 @@ export default {
     },
 
     async definirPadrao({ id } = {}) {
-      if (!mem.perfis.perfis[id]) throw new Error('Perfil não encontrado.');
+      if (!perfilDe(id)) throw new Error('Perfil não encontrado.');
       mem.perfis.padrao = id;
       await gravarJson(ARQ_PERFIS, mem.perfis);
-      return { mensagem: `"${mem.perfis.perfis[id].nome}" abre como padrão.` };
+      return { mensagem: `"${perfilDe(id).nome}" abre como padrão.` };
     },
 
     // ----- máquinas ligadas -----

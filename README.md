@@ -130,14 +130,18 @@ O núcleo não sabe nada de PullCut, HyperFrames etc. Um plugin novo (conector p
 Segurança (`core/seguranca.mjs`, vale para todas as rotas):
 
 - escuta só em 127.0.0.1, e o cabeçalho `Host` tem de ser `127.0.0.1`, `localhost` ou `[::1]` com a porta do Painel (barra DNS rebinding);
-- pedidos de outro site (`Sec-Fetch-Site: cross-site`) são recusados;
-- escrita (POST) só da própria origem e com `Content-Type: application/json` (menos `/api/enviar`), o que obriga o navegador a pedir licença CORS antes; um formulário ou `fetch` de outra página não chega a executar ação;
-- corpo inválido devolve 400, grande demais 413;
-- arquivos só podem ser abertos, listados ou tocados dentro das pastas que cada plugin declara.
+- só GET, HEAD e POST; o pré-voo de CORS (OPTIONS) é recusado, então nenhum outro site ganha licença;
+- a API não responde a outro site nem a outra porta de localhost (`Sec-Fetch-Site: cross-site` ou `same-site`);
+- escrita (POST) só da própria origem e com `Content-Type: application/json`; o envio de arquivo (`/api/enviar`) exige o cabeçalho `X-Painel: enviar`. Os dois obrigam o navegador a pedir licença CORS antes, então um formulário ou `fetch` de outra página não chega a executar ação;
+- o Painel não abre dentro de iframe de outro site (`X-Frame-Options: DENY`, `frame-ancestors 'none'`), o que barra o clickjacking, e outros sites não embutem os arquivos servidos (`Cross-Origin-Resource-Policy: same-origin`);
+- arquivos só podem ser abertos, listados ou tocados dentro das pastas que cada plugin declara, comparando o caminho real: `..`, junções e links simbólicos que apontam para fora, caminhos de dispositivo (`\\?\`, `\\.\`), fluxos alternativos do NTFS (`arquivo.mp4:oculto`) e nomes reservados do Windows (`CON.mp4`) são recusados;
+- nomes que viram argumento de comando (script do Blender, composição, arquivo para o Colab, perfil) passam por lista do que é permitido: nome simples, sem barras, sem `..`, sem começar com `-`.
+
+Erros, em todas as rotas, voltam como `{ "erro": "mensagem" }`: 400 pedido recusado (inclusive o que uma ação recusa), 403 proibido, 404 não encontrado (plugin, ação, arquivo), 405 método errado (com `Allow`), 413 corpo grande demais, 415 sem JSON, 421 host desconhecido, 500 falha interna (mensagem genérica; o detalhe só no console).
 
 Não é autenticação: qualquer programa rodando no próprio PC ainda pode falar com o Painel (é assim que a IA pelo terminal usa).
 
-Testes: `node --test "testes/*.test.mjs"` (segurança, leitura do corpo, máquinas e perfis do Colab).
+Testes: `node --test "testes/*.test.mjs"`. Cobrem a proteção das rotas, caminhos (com junções de verdade num diretório temporário), o formato dos erros e, na integração, um servidor real numa porta livre com um plugin de teste. O teste de link simbólico de arquivo é pulado no Windows sem Modo de Desenvolvedor.
 
 ## Colab
 
@@ -258,7 +262,7 @@ Na aba Blender: escolha o modelo, o tamanho e as amostras e clique **renderizar 
 - **A autorização do Drive vale por VM** (limitação do Colab CLI). A voz, o Blender e o 3D por IA não usam o Drive; a transcrição e o render do HyperFrames ainda usam.
 - **3D por IA:** o resultado depende muito da imagem (vista de frente, fundo limpo, objeto inteiro). Peças finas (cabos, antenas) podem sair grossas ou fundidas.
 - **Processos do PC não sobrevivem a reinício do Painel.** Renders locais em andamento param quando o Painel fecha; as VMs do Colab são desligadas.
-- **Testes cobrem o núcleo** (segurança, corpo, perfis), não os fluxos com Colab de verdade, que dependem da conta.
+- **Testes cobrem o núcleo e as rotas** (segurança, caminhos, erros, integração com um plugin de teste), não os fluxos com Colab de verdade, que dependem da conta.
 - Próximos: fila de tarefas do Colab, testes de integração com um Colab falso, mais modelos 3D e importar `.glb` direto numa composição do HyperFrames.
 
 ## Testar sem atrapalhar o Painel aberto

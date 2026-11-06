@@ -25,9 +25,11 @@ function hyperframes(ctx, args, cwd, extra) {
   });
 }
 
+// A composição é uma pasta FILHA de composicoes (nome simples, sem barras nem ".."); o caminho real é conferido.
 function pastaComposicao(ctx, nome) {
-  const dir = path.join(ctx.pastas.composicoes, String(nome));
-  if (!ctx.arquivos.dentroDe(dir, ctx.pastas.composicoes) || !existsSync(dir)) throw new Error('Composição não encontrada.');
+  const n = String(nome ?? '');
+  const dir = path.join(ctx.pastas.composicoes, n);
+  if (!/^\w[\w.-]{0,99}$/.test(n) || !ctx.arquivos.dentroDe(dir, ctx.pastas.composicoes) || !existsSync(dir)) throw new Error('Composição não encontrada.');
   return dir;
 }
 

@@ -19,6 +19,28 @@ export class ErroHttp extends Error {
   }
 }
 
+// Como cada erro vira resposta (o mesmo formato em todas as rotas: { erro: "mensagem" }):
+// - ErroHttp: o status e a mensagem dele;
+// - Error comum lançado por uma ação: o pedido foi recusado (400); a mensagem foi escrita para a pessoa;
+// - falha de programação (TypeError, ReferenceError…) ou do sistema (ENOENT, EACCES…): 500 com mensagem
+//   genérica. O detalhe vai só para o console, para não vazar caminhos ou pilhas para a página.
+const INTERNOS = [TypeError, ReferenceError, RangeError, SyntaxError, EvalError, URIError];
+export function respostaDeErro(e) {
+  if (e instanceof ErroHttp) return [e.status, e.message];
+  const sistema = typeof e?.code === 'string' && (/^E[A-Z]+$/.test(e.code) || e.code.startsWith('ERR_'));
+  if (e instanceof Error && !sistema && !INTERNOS.some((C) => e instanceof C)) return [400, e.message];
+  return [500, 'Erro interno do Painel. Veja o console do servidor.'];
+}
+
+export function responderErro(res, e, contexto = '') {
+  const [status, mensagem] = respostaDeErro(e);
+  if (status >= 500) console.error(`[painel] ${contexto}`, e);
+  if (res.headersSent) return res.destroy();
+  // Resposta antes de o corpo terminar (ex.: 413): o resto do corpo não pode virar o "próximo pedido" da conexão.
+  if (res.req && !res.req.complete) res.setHeader('Connection', 'close');
+  json(res, status, { erro: mensagem });
+}
+
 export async function lerCorpo(req) {
   let dados = '';
   for await (const parte of req) {

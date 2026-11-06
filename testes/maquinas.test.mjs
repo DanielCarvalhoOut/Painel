@@ -30,3 +30,11 @@ test('nome de sessão e argumentos do rodar.sh', () => {
 test('perfil padrão de fábrica existe', () => {
   assert.ok(FABRICA.perfis[FABRICA.padrao]);
 });
+
+test('nome de mídia para o notebook: só nome simples de vídeo/áudio', async () => {
+  const { nomeDeMidia } = await import('../plugins/colab/maquinas.mjs');
+  for (const n of ['aula.mp4', 'Minha gravação (2).MOV', 'voz_final.wav']) assert.ok(nomeDeMidia(n), n);
+  for (const n of ['../x.mp4', 'a/b.mp4', 'a\b.mp4', '-v.mp4', '.oculto.mp4', 'C:x.mp4', 'a.exe', 'a.mp4\nb', '', null, 42, 'x'.repeat(300) + '.mp4']) {
+    assert.equal(nomeDeMidia(n), false, String(n));
+  }
+});

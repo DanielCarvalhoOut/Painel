@@ -105,9 +105,10 @@ export default {
     async gerar({ script, nome, porcentagem = 100, amostras = 128 } = {}, ctx) {
       const exe = app(ctx);
       if (!exe) throw new Error('Blender não encontrado.');
-      const s = String(script || '').replace(/\.py$/, '');
+      const s = String(script ?? '').replace(/\.py$/i, '');
       const caminho = path.join(ctx.pastas.scripts, `${s}.py`);
-      if (!s || s.startsWith('_') || !ctx.arquivos.dentroDe(caminho, ctx.pastas.scripts) || !existsSync(caminho)) throw new Error('Script não encontrado.');
+      // Só um script direto de Blender/scripts (nada de subpastas, ".." ou bibliotecas "_").
+      if (!/^[a-z0-9][\w-]{0,99}$/i.test(s) || !ctx.arquivos.dentroDe(caminho, ctx.pastas.scripts) || !existsSync(caminho)) throw new Error('Script não encontrado.');
       const n = ctx.util.slug(nome || s) || s;
       const saida = path.join(ctx.pastas.saida, n);
       const pct = Math.min(100, Math.max(10, Number(porcentagem) || 100));
@@ -129,7 +130,7 @@ export default {
     async abrir({ caminho } = {}, ctx) {
       const exe = app(ctx);
       if (!exe) throw new Error('Blender não encontrado.');
-      if (!caminho || !ctx.arquivos.dentroDe(caminho, ctx.pastas.saida) || !existsSync(caminho) || !caminho.endsWith('.blend')) {
+      if (!caminho || !ctx.arquivos.dentroDe(caminho, ctx.pastas.saida) || !existsSync(caminho) || !/\.blend$/i.test(caminho)) {
         throw new Error('Arquivo .blend não encontrado.');
       }
       spawn(exe, [caminho], { detached: true, stdio: 'ignore' }).unref();

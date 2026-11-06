@@ -103,3 +103,9 @@ export async function gravarJson(arquivo, dados) {
   await writeFile(tmp, JSON.stringify(dados, null, 2));
   await rename(tmp, arquivo);
 }
+
+// Nome simples de vídeo/áudio para ir ao notebook (ARQUIVO=...): sem pastas, "..", ":", caracteres de controle,
+// nem começar com "-", "." ou espaço (não vira opção nem arquivo oculto).
+export const nomeDeMidia = (n) =>
+  typeof n === 'string' && n.length <= 200 && !n.includes('..') && !/^[\s.-]/.test(n) &&
+  /^[^\\/:*?"<>|\x00-\x1f]+\.(mp4|mov|mkv|webm|m4v|mp3|m4a|wav|aac|ogg|opus)$/i.test(n);
