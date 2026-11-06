@@ -71,11 +71,158 @@ function blocoLogin(processos) {
   return '';
 }
 
+// ---------- máquinas e perfis ----------
+const minutos = (ms) => {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+
+// Tabela (só leitura) do perfil ativo: que máquina cada tarefa usa.
+function tabelaPerfil(m) {
+  const p = m.perfis[m.ativo];
+  if (!p) return '';
+  const linhas = Object.entries(m.tarefas).map(([id, t]) => {
+    const c = p.tarefas[id];
+    const maq = m.catalogo[c.maquina];
+    return `<tr><td>${esc(t.rotulo)}</td><td><b>${esc(maq?.nome || c.maquina)}</b></td><td>${c.ramAlta ? 'sim' : '—'}</td>
+      <td>${c.manterMin ? `${c.manterMin} min` : 'desliga já'}</td><td>${c.limiteMin} min</td></tr>`;
+  }).join('');
+  return `<table class="tab-maq"><thead><tr><th>tarefa</th><th>máquina</th><th>RAM alta</th><th>depois</th><th>limite</th></tr></thead><tbody>${linhas}</tbody></table>`;
+}
+
+// Máquinas do Painel ligadas agora (mantidas para a próxima tarefa, em uso ou sobras).
+function ligadas(m) {
+  if (!m.ligadas.length) return `<p class="vazio" style="padding:6px 0">Nenhuma máquina do Painel ligada${m.conferidoEm ? ` · conferido ${atras(m.conferidoEm)}` : ''}.</p>`;
+  return m.ligadas.map((l) => `<div class="maq-ligada ${l.sobra ? 'sobra' : ''}">
+      <span class="st ${l.sobra ? 'erro' : l.emUso ? 'aviso' : 'ok'}">${l.sobra ? '[!]' : l.emUso ? '[~]' : '[●]'}</span>
+      <span class="mono"><b>${esc(l.sessao)}</b> · ${esc(l.hardware)}</span>
+      <span class="mono maq-quando">${l.emUso ? 'rodando uma tarefa' : l.desligarEm ? `desliga em ${minutos(l.desligarEm - Date.now())}` : 'ligada sem tarefa: gastando à toa'}</span>
+      ${l.emUso ? '' : `<button class="acao ${l.sobra ? 'forte' : ''}" data-acao="desligarSessao" data-params="${attr({ sessao: l.sessao })}">[■] desligar agora</button>`}
+    </div>`).join('');
+}
+
+function historico(m) {
+  if (!m.historico.length) return '';
+  return `<details><summary class="mono" style="font-size:11px;color:var(--faint);cursor:pointer">gasto das últimas tarefas</summary>
+    <div class="lista" style="margin-top:6px">${m.historico.map((h) => `<div class="mono hist">
+      <span class="st ${h.estado === 'concluido' ? 'ok' : 'erro'}">${simbolo(h.estado)}</span>
+      <span>${esc(h.titulo)}</span><span>${h.fim && h.inicio ? minutos(h.fim - h.inicio) : '—'}</span>
+      <span><b>${h.gasto != null ? `${h.gasto.toFixed(2)} un.` : '—'}</b></span><span style="color:var(--faint)">${atras(h.fim || h.inicio)}</span></div>`).join('')}</div>
+    <p class="dica" style="margin:6px 0 0">Gasto = saldo antes − saldo depois, lido com <span class="mono">colab usage</span>. O Google atualiza o saldo com atraso: tarefas curtas podem aparecer como 0.</p></details>`;
+}
+
+// Editor de um perfil. Desenhado uma vez ao abrir (não é redesenhado a cada evento, para não perder o que se digita).
+function editorPerfil(m, id) {
+  const p = id ? m.perfis[id] : { nome: '', tarefas: m.perfis[m.ativo].tarefas };
+  const linha = ([tid, t]) => {
+    const c = p.tarefas[tid];
+    const opcoes = t.maquinas.map((q) => `<option value="${q}" ${q === c.maquina ? 'selected' : ''}>${esc(m.catalogo[q].nome)}</option>`).join('');
+    return `<fieldset class="ed-tarefa" data-tarefa="${tid}">
+      <legend>${esc(t.rotulo)}</legend>
+      <label class="campo"><span>máquina</span><select data-c="maquina">${opcoes}</select></label>
+      <label class="campo ed-check"><span>RAM alta</span><input type="checkbox" data-c="ramAlta" ${c.ramAlta ? 'checked' : ''}></label>
+      <label class="campo"><span>manter ligada (min)</span><input type="number" data-c="manterMin" min="0" max="120" step="5" value="${c.manterMin}" style="width:80px"></label>
+      <label class="campo"><span>limite (min)</span><input type="number" data-c="limiteMin" min="5" max="720" step="5" value="${c.limiteMin}" style="width:80px"></label>
+      <p class="ed-explica mono"></p>
+    </fieldset>`;
+  };
+  return `<form id="clPerfilForm" class="ed-perfil" data-id="${esc(id || '')}">
+    <div class="acoes" style="align-items:end">
+      <label class="campo"><span>nome do perfil</span><input id="clPerfilNome" maxlength="40" required value="${esc(p.nome)}" placeholder="ex.: 3D pesado"></label>
+      <label class="campo ed-check"><span>abrir como padrão</span><input type="checkbox" id="clPerfilPadrao" ${id && id === m.padrao ? 'checked' : ''}></label>
+    </div>
+    ${Object.entries(m.tarefas).map(linha).join('')}
+    <div class="ed-ajuda">${Object.entries({ 'máquina': m.opcoes.maquina, 'RAM alta': m.opcoes.ramAlta, 'manter ligada': m.opcoes.manterMin, 'limite': m.opcoes.limiteMin })
+      .map(([k, v]) => `<p class="mono"><b>${esc(k)}:</b> ${esc(v)}</p>`).join('')}</div>
+    <div class="acoes"><button class="acao forte" type="submit">[✓] salvar perfil</button><button class="acao" type="button" data-fechar>cancelar</button></div>
+  </form>`;
+}
+
+// Explicação da máquina escolhida e RAM alta só onde existe; atualiza ao trocar.
+function ajustarLinha(fs, m) {
+  const q = fs.querySelector('[data-c=maquina]').value;
+  const ram = fs.querySelector('[data-c=ramAlta]');
+  ram.disabled = !m.catalogo[q].ramAlta;
+  if (ram.disabled) ram.checked = false;
+  fs.querySelector('.ed-explica').textContent = m.catalogo[q].explica;
+}
+
+function blocoMaquinas(raiz) {
+  raiz.querySelector('#clPerfil').addEventListener('change', (ev) => ctxUi.acao('usarPerfil', { id: ev.target.value }).catch(() => {}));
+  const abrirEditor = (id) => {
+    const m = ctxUi.estado()?.maquinas;
+    if (!m) return;
+    const caixa = raiz.querySelector('#clEditor');
+    caixa.innerHTML = editorPerfil(m, id);
+    for (const fs of caixa.querySelectorAll('.ed-tarefa')) ajustarLinha(fs, m);
+    caixa.querySelector('#clPerfilNome').focus();
+  };
+  raiz.querySelector('#clPerfilEditar').addEventListener('click', () => abrirEditor(raiz.querySelector('#clPerfil').value));
+  raiz.querySelector('#clPerfilNovo').addEventListener('click', () => abrirEditor(null));
+  raiz.querySelector('#clPerfilPadrao2').addEventListener('click', () => ctxUi.acao('definirPadrao', { id: raiz.querySelector('#clPerfil').value }).catch(() => {}));
+  raiz.querySelector('#clPerfilApagar').addEventListener('click', () => {
+    const sel = raiz.querySelector('#clPerfil');
+    if (confirm(`Apagar o perfil "${sel.selectedOptions[0]?.textContent}"?`)) ctxUi.acao('apagarPerfil', { id: sel.value }).catch(() => {});
+  });
+  const editor = raiz.querySelector('#clEditor');
+  editor.addEventListener('change', (ev) => {
+    const fs = ev.target.closest('.ed-tarefa');
+    if (fs && ev.target.dataset.c === 'maquina') ajustarLinha(fs, ctxUi.estado().maquinas);
+  });
+  editor.addEventListener('click', (ev) => { if (ev.target.closest('[data-fechar]')) editor.innerHTML = ''; });
+  editor.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const form = ev.target;
+    const tarefas = {};
+    for (const fs of form.querySelectorAll('.ed-tarefa')) {
+      const v = (c) => fs.querySelector(`[data-c=${c}]`);
+      tarefas[fs.dataset.tarefa] = { maquina: v('maquina').value, ramAlta: v('ramAlta').checked, manterMin: Number(v('manterMin').value), limiteMin: Number(v('limiteMin').value) };
+    }
+    const r = await ctxUi.acao('salvarPerfil', {
+      id: form.dataset.id || undefined, nome: form.querySelector('#clPerfilNome').value, tarefas, padrao: form.querySelector('#clPerfilPadrao').checked,
+    }).catch(() => null);
+    if (r) editor.innerHTML = '';
+  });
+}
+
+function atualizarMaquinas(m) {
+  if (!m) return;
+  const sel = el.querySelector('#clPerfil');
+  const lista = Object.entries(m.perfis).map(([id, p]) => `${id}:${p.nome}:${id === m.padrao}`).join('|');
+  if (sel.dataset.lista !== lista) {
+    sel.innerHTML = Object.entries(m.perfis).map(([id, p]) => `<option value="${esc(id)}">${esc(p.nome)}${id === m.padrao ? ' ★' : ''}</option>`).join('');
+    sel.dataset.lista = lista;
+  }
+  if (document.activeElement !== sel) sel.value = m.ativo;
+  el.querySelector('#clSaldo').textContent = m.saldo != null ? `saldo ${m.saldo.toFixed(2)} unidades` : 'saldo —';
+  desenhar(el.querySelector('#clTabela'), tabelaPerfil(m));
+  desenhar(el.querySelector('#clLigadas'), ligadas(m));
+  desenhar(el.querySelector('#clHistorico'), historico(m));
+}
+
 export default {
   montar(raiz, ctx) {
     el = raiz;
     ctxUi = ctx;
     raiz.innerHTML = `
+      <style>
+        #clMaquinas .tab-maq { width: 100%; border-collapse: collapse; font: 12px var(--mono); }
+        #clMaquinas .tab-maq th { text-align: left; font-weight: 500; color: var(--faint); text-transform: uppercase; letter-spacing: .1em; font-size: 10px; padding: 0 10px 6px 0; }
+        #clMaquinas .tab-maq td { padding: 7px 10px 7px 0; border-top: 1px solid var(--line-soft); color: var(--muted); }
+        #clMaquinas .tab-maq td b { color: var(--text); font-weight: 600; }
+        #clMaquinas .maq-ligada { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 8px 0; border-top: 1px solid var(--line-soft); font-size: 12px; }
+        #clMaquinas .maq-ligada.sobra { background: #e5626b14; padding: 8px; border-radius: 4px; }
+        #clMaquinas .maq-quando { color: var(--muted); flex: 1; }
+        #clMaquinas .hist { display: grid; grid-template-columns: 34px 1fr 54px 76px 90px; gap: 8px; font-size: 12px; padding: 6px 0; border-bottom: 1px solid var(--line-soft); color: var(--muted); }
+        #clMaquinas .ed-perfil { display: grid; gap: 10px; border: 1px solid var(--amber); border-radius: 6px; padding: 12px 14px; }
+        #clMaquinas .ed-tarefa { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; border: 1px solid var(--line-soft); border-radius: 4px; padding: 8px 12px 10px; margin: 0; }
+        #clMaquinas .ed-tarefa legend { font: 600 12px var(--mono); color: var(--text); padding: 0 6px; }
+        #clMaquinas .ed-check input { width: 18px; height: 18px; }
+        #clMaquinas .ed-explica { flex-basis: 100%; margin: 0; font-size: 12px; color: var(--muted); }
+        #clMaquinas .ed-ajuda p { margin: 0 0 4px; font-size: 11px; color: var(--muted); }
+        #clMaquinas .ed-ajuda b { color: var(--text); }
+        @media (max-width: 640px) { #clMaquinas .hist { grid-template-columns: 30px 1fr 70px; } #clMaquinas .hist > :nth-child(3), #clMaquinas .hist > :nth-child(5) { display: none; } }
+      </style>
       <div class="cab" style="margin-top:0"><p class="rotulo">Google Colab</p>
         <div class="acoes">${botoesPastas([['notebooks', 'notebooks'], ['status', 'status']])}
           <button class="acao forte" data-abrir="https://colab.research.google.com/">[↗] abrir Colab</button></div></div>
@@ -85,19 +232,42 @@ export default {
           <span class="mono" id="clCliEstado" style="font-size:12px;color:var(--muted)"></span>
         </div>
         <div class="acoes" style="align-items:end">
-          <button class="op" data-acao="transcrever" title="Liga uma T4, transcreve o que estiver novo em HyperFrames/entrada e desliga">[>] transcrever na GPU</button>
+          <button class="op" data-acao="transcrever" title="Liga a máquina do perfil, transcreve o que estiver novo em HyperFrames/entrada e desliga">[>] transcrever na GPU</button>
           <label class="campo"><span>composição</span><input id="clComp" placeholder="ex.: sim-pra-tudo" size="18"></label>
           <label class="campo"><span>qualidade</span><select id="clQual"><option>draft</option><option selected>looks</option><option>delivery</option></select></label>
-          <button class="op" id="clRender" title="Liga uma VM de CPU com RAM alta, renderiza e desliga">[>] renderizar no Colab</button>
+          <button class="op" id="clRender" title="Liga a máquina do perfil (CPU com RAM alta, por padrão), renderiza e desliga">[>] renderizar no Colab</button>
           <button class="acao" data-acao="desligar" data-confirmar="Desligar as VMs do Painel no Colab?" title="Use se cancelou no meio e a VM pode ter ficado ligada">[■] desligar VMs</button>
         </div>
         <div id="clLogin"></div>
         <div id="clProcs"></div>
-        <p class="dica" style="margin:0">A VM sempre é desligada no fim. Na primeira vez o Painel pede o login do Google e, se precisar, a autorização do Drive, aqui mesmo.</p>
+        <p class="dica" style="margin:0">Cada tarefa roda na máquina do perfil abaixo e é desligada no fim (ou depois do tempo de "manter ligada"). Na primeira vez o Painel pede o login do Google e, se precisar, a autorização do Drive, aqui mesmo.</p>
+      </section>
+      <section class="bloco" id="clMaquinas" style="padding:16px 18px;display:grid;gap:12px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline">
+          <b style="font-weight:600">Máquinas <span class="mono" style="font-size:12px;color:var(--faint);font-weight:400">perfis de configuração</span></b>
+          <span class="mono" id="clSaldo" style="font-size:12px;color:var(--muted)"></span>
+        </div>
+        <div class="acoes" style="align-items:end">
+          <label class="campo"><span>perfil em uso</span><select id="clPerfil"></select></label>
+          <button class="acao" id="clPerfilEditar">[✎] editar</button>
+          <button class="acao" id="clPerfilNovo">[+] novo a partir deste</button>
+          <button class="acao" id="clPerfilPadrao2" title="Este perfil já vem escolhido quando o Painel abre">[★] abrir como padrão</button>
+          <button class="acao" id="clPerfilApagar">[×] apagar</button>
+        </div>
+        <div id="clTabela"></div>
+        <div id="clEditor"></div>
+        <div>
+          <div class="acoes" style="justify-content:space-between;align-items:baseline">
+            <span class="rotulo" style="margin:0">ligadas agora</span>
+            <button class="acao" data-acao="conferirSessoes">[↻] conferir no Colab</button>
+          </div>
+          <div id="clLigadas"></div>
+        </div>
+        <div id="clHistorico"></div>
       </section>
       <section class="bloco" id="clVoz" style="padding:16px 18px;display:grid;gap:12px;margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline">
-          <b style="font-weight:600">Gerar narração <span class="mono" style="font-size:12px;color:var(--faint);font-weight:400">Chatterbox na T4 · pt-br</span></b>
+          <b style="font-weight:600">Gerar narração <span class="mono" style="font-size:12px;color:var(--faint);font-weight:400">Chatterbox · pt-br · máquina do perfil</span></b>
           ${botoesPastas([['voz', 'vozes'], ['referencia', 'referências']])}
         </div>
         <form id="clVozForm" style="display:grid;gap:10px">
@@ -111,12 +281,13 @@ export default {
           </div>
         </form>
         <div id="clVozes"></div>
-        <p class="dica" style="margin:0">Gasta unidades do Colab: uns 5 min de preparo e depois quase tempo real. Para usar outra voz, ponha um áudio limpo de 10–20 s em <b>voz/referencia</b>, <b>só da sua voz ou de quem autorizou</b>. O .wav sai em HyperFrames/voz, pronto para a composição.</p>
+        <p class="dica" style="margin:0">Gasta unidades do Colab: uns 5 min de preparo na primeira vez (com "manter ligada" no perfil, as próximas começam na hora) e depois quase tempo real. Não usa o Drive, então não pede autorização. Para usar outra voz, ponha um áudio limpo de 10–20 s em <b>voz/referencia</b>, <b>só da sua voz ou de quem autorizou</b>. O .wav sai em HyperFrames/voz, pronto para a composição.</p>
       </section>
       <div id="clServicos" style="display:grid;gap:12px"></div>
       <div class="cab"><p class="rotulo">Notebooks no Drive</p></div>
       <div id="clNotebooks"></div>
       <p class="dica">No Colab: Arquivo → Abrir notebook → Google Drive → EditorVideos/_colab/notebooks. O status aparece aqui sozinho enquanto o notebook roda.</p>`;
+    blocoMaquinas(raiz);
     raiz.querySelector('#clRender').addEventListener('click', async (ev) => {
       const b = ev.currentTarget;
       b.disabled = true;
@@ -156,6 +327,7 @@ export default {
       sel.dataset.lista = refs.join('|');
     }
     desenhar(el.querySelector('#clVozes'), lista((e.vozes || []).slice(0, 8).map((a) => linhaArquivo(a, { baixar: true })), 'Nenhuma narração ainda.'));
+    atualizarMaquinas(e.maquinas);
     desenhar(el.querySelector('#clLogin'), blocoLogin(e.processos || []));
     desenhar(el.querySelector('#clProcs'), (e.processos || []).length ? lista(e.processos.slice(0, 4).map((p) => autorizacao(p) + linhaProcesso(p)), '') : '');
     desenhar(el.querySelector('#clServicos'), e.servicos.length ? e.servicos.map(servico).join('')

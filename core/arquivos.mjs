@@ -11,11 +11,14 @@ export const EXT = {
   video: ['.mp4', '.mov', '.mkv', '.webm', '.m4v', '.gif'],
   audio: ['.mp3', '.m4a', '.wav', '.aac', '.ogg', '.opus'],
   legenda: ['.srt', '.vtt', '.json'],
+  imagem: ['.png', '.jpg', '.jpeg', '.webp'],
+  modelo3d: ['.glb', '.blend'],
 };
 const MIME = {
   '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm', '.mkv': 'video/x-matroska', '.gif': 'image/gif',
   '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.wav': 'audio/wav', '.aac': 'audio/aac', '.ogg': 'audio/ogg', '.opus': 'audio/ogg',
   '.srt': 'text/plain; charset=utf-8', '.vtt': 'text/vtt; charset=utf-8', '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.glb': 'model/gltf-binary',
 };
 
 export function tipoDe(nome) {

@@ -50,7 +50,7 @@ export function duracao(ms) {
   return h ? `${h}h${String(m).padStart(2, '0')}` : `${m}:${String(s % 60).padStart(2, '0')}`;
 }
 
-const ICONE_TIPO = { video: '[>]', audio: '[~]', legenda: '[T]', outro: '[·]' };
+const ICONE_TIPO = { video: '[>]', audio: '[~]', legenda: '[T]', imagem: '[#]', modelo3d: '[3d]', outro: '[·]' };
 
 // Uma linha de arquivo. botoes: HTML extra (ex.: ação de importar). tocar=false esconde o play.
 // baixar: true põe um link de download (vídeo pronto saindo do estúdio).

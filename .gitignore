@@ -15,3 +15,14 @@ node_modules/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Estado local do Colab: perfis que você salvou, sessões mantidas, histórico, logs e resultados baixados
+colab-perfis.json
+colab-cli/_estado.json
+colab-cli/_historico.jsonl
+colab-cli/_logs/
+colab-cli/_blender/
+# 3D por IA: token do Hugging Face, extensões compiladas no Colab e resultados baixados
+colab-cli/_segredos/
+colab-cli/_rodas/
+colab-cli/_ia3d/

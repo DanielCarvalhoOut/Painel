@@ -11,13 +11,29 @@ export function json(res, status, corpo) {
   res.end(JSON.stringify(corpo));
 }
 
+// Erro com código HTTP: o servidor responde com `status` em vez de 500.
+export class ErroHttp extends Error {
+  constructor(status, mensagem) {
+    super(mensagem);
+    this.status = status;
+  }
+}
+
 export async function lerCorpo(req) {
   let dados = '';
   for await (const parte of req) {
     dados += parte;
-    if (dados.length > 1e5) throw new Error('Corpo grande demais');
+    if (dados.length > 1e5) throw new ErroHttp(413, 'Corpo grande demais.');
   }
-  return dados ? JSON.parse(dados) : {};
+  if (!dados) return {};
+  let corpo;
+  try {
+    corpo = JSON.parse(dados);
+  } catch {
+    throw new ErroHttp(400, 'JSON inválido no corpo.');
+  }
+  if (!corpo || typeof corpo !== 'object' || Array.isArray(corpo)) throw new ErroHttp(400, 'O corpo deve ser um objeto JSON.');
+  return corpo;
 }
 
 export function portaAberta(porta, host = '127.0.0.1') {

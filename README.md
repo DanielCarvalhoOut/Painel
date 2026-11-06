@@ -73,7 +73,8 @@ Para a IA: abra o Claude Code na pasta do estúdio. O guia que ela segue está e
 |---|---|
 | Visão geral | "O que você quer fazer?" (receitas), os dois jeitos de usar, **enviar vídeo**, um cartão por ferramenta (forte, usos, não é para) e a atividade |
 | PullCut | A interface do PullCut embutida (ele roda na porta 4747). O Painel liga o PullCut se estiver desligado |
-| Colab | Andamento de cada notebook: etapa, progresso, GPU, RAM e log. Lista os notebooks do Drive |
+| Colab | Andamento de cada notebook: etapa, progresso, GPU, RAM e log. **Máquinas e perfis** (qual VM cada tarefa usa), sessões ligadas, saldo e histórico com custo |
+| Blender | Modelos 3D por script (render no PC ou no Colab) e **3D por IA** a partir de uma imagem (TRELLIS.2 no Colab); galeria com `.png`, `.glb`, `.blend` e vídeo de giro |
 | HyperFrames | Criar composição a partir da entrada, prévia, render rascunho/final, arquivos |
 | FilmCraft | Abre o app conectado e manda mídia e legendas `.srt` para a timeline |
 
@@ -126,7 +127,17 @@ Painel/
 
 O núcleo não sabe nada de PullCut, HyperFrames etc. Um plugin novo (conector para outro app, outro serviço na nuvem, outro editor) é só uma pasta nova em `plugins/` — veja `plugins/_modelo/LEIAME.md`. Para desligar um, ponha o id em `desativados` no `painel.config.json`.
 
-Segurança: escuta só em 127.0.0.1; arquivos só podem ser abertos, listados ou tocados dentro das pastas que cada plugin declara.
+Segurança (`core/seguranca.mjs`, vale para todas as rotas):
+
+- escuta só em 127.0.0.1, e o cabeçalho `Host` tem de ser `127.0.0.1`, `localhost` ou `[::1]` com a porta do Painel (barra DNS rebinding);
+- pedidos de outro site (`Sec-Fetch-Site: cross-site`) são recusados;
+- escrita (POST) só da própria origem e com `Content-Type: application/json` (menos `/api/enviar`), o que obriga o navegador a pedir licença CORS antes; um formulário ou `fetch` de outra página não chega a executar ação;
+- corpo inválido devolve 400, grande demais 413;
+- arquivos só podem ser abertos, listados ou tocados dentro das pastas que cada plugin declara.
+
+Não é autenticação: qualquer programa rodando no próprio PC ainda pode falar com o Painel (é assim que a IA pelo terminal usa).
+
+Testes: `node --test "testes/*.test.mjs"` (segurança, leitura do corpo, máquinas e perfis do Colab).
 
 ## Colab
 
@@ -137,8 +148,19 @@ Os notebooks gravam `EditorVideos/_colab/status/<serviço>.json` no Drive (batim
 | `1_transcrever.ipynb` | GPU T4 | faster-whisper 1.1.1 (`large-v3-turbo`) → `<projeto>/transcricao/<nome>.json` (palavras, formato do HyperFrames), `.srt`, `.vtt` |
 | `2_renderizar.ipynb` | CPU, RAM alta | Node 22.20.0 (SHA-256 conferido) + hyperframes 0.8.225 sem telemetria → `HyperFrames/saida/<nome>_<data>_colab.mp4` |
 | `3_voz.ipynb` | GPU T4 | [Chatterbox Multilingual](https://github.com/resemble-ai/chatterbox) 0.1.7 (MIT), pt-br → `HyperFrames/voz/<nome>.wav`. O texto é dividido em blocos de até 260 caracteres (blocos longos saíam cortados) e juntado com pausas. Uns 5 min de preparo (instalação e modelo), depois perto de tempo real |
+| `4_blender.ipynb` | GPU (perfil) | Blender 5.2.2 oficial para Linux (SHA-256 conferido), Cycles com OptiX/CUDA, roda um script de `Blender/scripts` → `.png`, `.glb`, `.blend` que voltam para `Blender/saida/<nome>-colab` |
+| `5_3d_ia.ipynb` | L4, A100 ou H100 | [TRELLIS.2](https://github.com/microsoft/TRELLIS.2) (Microsoft, MIT) num commit fixo: imagem → modelo com textura PBR → vitrine no Blender → `Blender/saida/<nome>-ia` (.glb, .png, .blend e, com giro, .mp4) |
 
 **Narração (aba Colab → Gerar narração):** cole o roteiro, dê um nome e clique. *Expressão* (0.25–1.5) deixa a fala mais contida ou mais animada; *ritmo* (0–1) mais baixo deixa a fala mais solta, mais alto segue o texto à risca. Para outra voz, ponha um áudio limpo de 10–20 s em `HyperFrames/voz/referencia` e escolha no campo *voz*: **só a sua voz ou de quem autorizou**. Pelo CLI o .wav volta direto da VM (não espera o Drive) e o Painel copia para `HyperFrames/voz`.
+
+### Máquinas e perfis
+
+Na aba Colab, a seção **Máquinas** diz qual VM cada tarefa usa: CPU, T4, L4, G4, A100 ou H100 (as GPUs que o Colab CLI oferece), RAM alta, por quantos minutos **manter ligada** depois (para emendar outra tarefa sem esperar a VM subir de novo) e o **limite** de tempo da tarefa. Cada opção tem a explicação ao lado.
+
+- Um **perfil** junta essas escolhas para todas as tarefas. Vêm três prontos (*Econômico*: T4; *Rápido*: L4; *Sessão*: mantém 20 min) e você pode salvar os seus (`colab-perfis.json`, fora do git). O perfil marcado como **padrão** já vem selecionado quando o Painel abre.
+- Uma sessão por tipo de máquina (`editorvideos-t4`, `editorvideos-l4-hm`…): duas tarefas na mesma máquina reaproveitam a VM se ela ainda estiver ligada.
+- **Desligamento garantido:** se a tarefa der erro ou for cancelada, a VM é desligada na hora; se travar, um vigia desliga no limite + 15 min; a VM mantida é desligada pelo cronômetro do Painel (que sobrevive a reinício, `colab-cli/_estado.json`) e ao fechar o Painel. *Conferir sessões* lista o que está ligado no Colab e marca **sobras** (VMs que o Painel não está usando) com botão de desligar.
+- **Custo:** o `rodar.sh` lê o saldo antes e depois (`colab usage`); o histórico mostra quanto cada tarefa gastou. O log completo de cada rodada fica em `colab-cli/_logs/`.
 
 No Colab: Arquivo → Abrir notebook → Google Drive → `EditorVideos/_colab/notebooks`. Para mudar um notebook, edite `notebooks/gerar.mjs` e rode `node notebooks/gerar.mjs` (regera e copia para o Drive).
 
@@ -154,7 +176,7 @@ O CLI só roda em Linux e macOS, então aqui ele roda pelo **WSL (Ubuntu 24.04, 
 |---|---|
 | `colab-cli/instalar.sh` | Sem `sudo`: baixa o uv 0.13.1 e o wheel do CLI, confere os dois por SHA-256 e instala o venv em `~/.editorvideos/colab-cli` no WSL (o `/mnt/d` é lento e instável para venv). Rodar, na pasta do Painel: `wsl -d Ubuntu -- bash colab-cli/instalar.sh` |
 | `colab-cli/login.cmd` | Login **uma vez** pelo terminal (alternativa ao login pela aba): abre um link, você entra com a conta do Colab Pro (a mesma do Drive do PC) e cola o código. O token fica em `~/.config/colab-cli/token.json` no WSL |
-| `colab-cli/rodar.sh` | `transcrever [ARQUIVO]` (T4), `renderizar COMPOSICAO [QUALIDADE]` (CPU com RAM alta), `login` e `parar` (desliga as VMs). O Painel chama este script |
+| `colab-cli/rodar.sh` | `--maquina M` (CPU, T4, L4, G4, A100, H100), `--ram-alta`, `--manter`, `--limite SEG` + `transcrever`, `renderizar`, `voz`, `blender`, `login`, `saldo`, `sessoes`, `parar [SESSAO]`. O Painel chama este script com a máquina do perfil |
 
 **Login pela aba Colab:** se uma tarefa falhar por falta de login (ou token expirado), aparece **[>] fazer login agora**. O Painel roda `rodar.sh login`, pega o link do Google no log e mostra **[↗] abrir login do Google** e um campo para colar o código; o código vai direto para a entrada do CLI (não fica no log). Depois é só clicar de novo no que você tentou rodar.
 
@@ -197,6 +219,47 @@ Para conferir uma correção sem refazer tudo: rode só a célula que falhou (as
 | `check` acusa `audio_source_unreadable … ffprobe not found` | FFmpeg fora do `PATH` do terminal | O Painel já põe o FFmpeg no `PATH` dos processos. No terminal: `export PATH="<pasta bin do FFmpeg>:$PATH"` |
 | A CLI termina com código 0 mas não há MP4 | O `render` sai com 0 mesmo com "Render failed" (ex.: mixagem de áudio bloqueada) | O Painel confere se o arquivo existe e marca erro com a linha do log; o notebook do Colab também |
 | Efeitos sonoros em `.mp3` falhando na mixagem | Ver a primeira linha | Prefira `.wav` em `assets/sfx` (decodificação trivial) |
+
+## 3D por IA (imagem → modelo, TRELLIS.2 no Colab)
+
+Na aba Blender, **3D por IA a partir de uma imagem**: envie uma imagem (objeto ou personagem inteiro, de frente, fundo simples), escolha o detalhe (512, 1024 ou 1536), a textura (1K a 4K), as faces e se quer o vídeo de giro, e clique **gerar 3D no Colab**. O Colab tira o fundo, gera a forma e a textura, limpa a malha e renderiza uma vitrine no Blender. Tudo volta para a galeria.
+
+- **Máquina:** 24 GB de memória de vídeo (L4, A100 ou H100), pelo perfil (tarefa *3D por IA*). Na T4 não cabe.
+- **Primeira vez:** o Colab compila as extensões CUDA (CuMesh, FlexGEMM, o-voxel; uns 20 a 30 min). O pacote compilado volta para `colab-cli/_rodas` e sobe nas próximas, que pulam essa etapa (se o Python, o torch ou os commits mudarem, compila de novo).
+- **Token do Hugging Face:** o TRELLIS.2 usa o DINOv3 da Meta, que tem acesso controlado. Crie a conta, peça acesso em [facebook/dinov3-vitl16-pretrain-lvd1689m](https://huggingface.co/facebook/dinov3-vitl16-pretrain-lvd1689m), crie um token de leitura e cole na aba Blender. Ele fica em `colab-cli/_segredos` (fora do git), sobe para a VM como arquivo e é apagado de lá logo depois de lido. *Conferir acesso* pergunta ao próprio Hugging Face se o token vale e se o DINOv3 já foi aprovado.
+
+**Licenças, conferidas na instalação (tudo fixo em commit ou SHA-256):**
+
+| Peça | Licença | Observação |
+|---|---|---|
+| TRELLIS.2, TRELLIS.2-4B, TRELLIS-image-large | MIT | Microsoft |
+| CuMesh, cubvh, FlexGEMM, o-voxel | MIT | compilados na VM |
+| flash-attn 2.8.3 | BSD-3 | roda oficial, SHA-256 do GitHub |
+| BiRefNet (remoção de fundo) | MIT | troca o RMBG-2.0 do `pipeline.json`, que é **não comercial** |
+| DINOv3 | licença própria da Meta | exige aceite e token |
+| nvdiffrast / nvdiffrec | NVIDIA, **só uso não comercial** | **não são instalados**: `colab-cli/ia3d/textura_aberta.py` assa a textura com um rasterizador UV próprio em PyTorch |
+
+Use só imagens suas ou que você pode usar; personagem de terceiros, não.
+
+## Blender (3D)
+
+As bibliotecas `_estudio.py` e `_vitrine.py` vêm neste repositório, na pasta `blender/`, e o Painel as copia para `Blender/scripts` na primeira vez (sem sobrescrever uma versão sua). Os modelos são scripts Python em `Blender/scripts` (os que começam com `_` são bibliotecas; `_estudio.py` tem os argumentos, GPU, render e exportação `.glb`). Cada script monta a cena do zero, então o mesmo arquivo roda no PC e no Colab:
+
+```
+blender -b --factory-startup --offline-mode -P scripts/<modelo>.py -- <pasta_saida> [porcentagem] [amostras]
+```
+
+Na aba Blender: escolha o modelo, o tamanho e as amostras e clique **renderizar no PC** (CPU, sem custo) ou **renderizar no Colab** (GPU do perfil ativo, gasta unidades). O resultado aparece na galeria com download do `.png` e do `.glb` e um botão para abrir o `.blend` no Blender.
+
+## Limitações conhecidas e próximos passos
+
+- **Sem autenticação.** As barreiras acima impedem outro site de usar o Painel, mas programas no próprio PC podem. Não exponha a porta na rede.
+- **Uma tarefa do Colab por vez.** Paralelo exigiria controlar saldo e sessões por tarefa.
+- **A autorização do Drive vale por VM** (limitação do Colab CLI). A voz, o Blender e o 3D por IA não usam o Drive; a transcrição e o render do HyperFrames ainda usam.
+- **3D por IA:** o resultado depende muito da imagem (vista de frente, fundo limpo, objeto inteiro). Peças finas (cabos, antenas) podem sair grossas ou fundidas.
+- **Processos do PC não sobrevivem a reinício do Painel.** Renders locais em andamento param quando o Painel fecha; as VMs do Colab são desligadas.
+- **Testes cobrem o núcleo** (segurança, corpo, perfis), não os fluxos com Colab de verdade, que dependem da conta.
+- Próximos: fila de tarefas do Colab, testes de integração com um Colab falso, mais modelos 3D e importar `.glb` direto numa composição do HyperFrames.
 
 ## Testar sem atrapalhar o Painel aberto
 

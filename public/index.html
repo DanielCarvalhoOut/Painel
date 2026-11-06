@@ -365,23 +365,27 @@ function criarCtx(m) {
     manifesto: m,
     ui,
     estado: () => estados[m.id],
-    async acao(nome, params = {}) {
-      try {
-        const r = await api(`/api/plugins/${m.id}/acao`, { acao: nome, ...params });
-        if (r?.mensagem) avisar(r.mensagem);
-        atualizarPlugin(m.id);
-        return r;
-      } catch (e) {
-        avisar(e.message, 'erro');
-        throw e;
-      }
-    },
+    acao: (nome, params = {}) => acaoEm(m.id, nome, params),
+    acaoEm,
     avisar,
     abrirPlayer,
     irPara,
     atualizar: () => atualizarPlugin(m.id),
     urlArquivo: (caminho) => `/api/arquivo?caminho=${encodeURIComponent(caminho)}`,
   };
+  // Ação de outro plugin (ex.: a aba Blender pede um render ao Colab).
+  async function acaoEm(plugin, nome, params = {}) {
+    try {
+      const r = await api(`/api/plugins/${plugin}/acao`, { acao: nome, ...params });
+      if (r?.mensagem) avisar(r.mensagem);
+      atualizarPlugin(plugin);
+      if (plugin !== m.id) atualizarPlugin(m.id);
+      return r;
+    } catch (e) {
+      avisar(e.message, 'erro');
+      throw e;
+    }
+  }
 }
 
 // ---------- abas ----------
@@ -718,7 +722,7 @@ document.addEventListener('click', async (ev) => {
 const envios = [];
 let proximoEnvio = 1;
 let enviando = false;
-const receptor = () => manifestos.find((m) => m.recebe && !m.desativado && !m.erro);
+const receptor = () => manifestos.find((m) => m.recebe && (!m.recebe.tipos || m.recebe.tipos.includes('video')) && !m.desativado && !m.erro);
 const ESTADO_ENVIO = { esperando: 'rodando', enviando: 'rodando', pronto: 'concluido', erro: 'erro', cancelado: 'cancelado' };
 
 function enviarArquivos(arquivos) {

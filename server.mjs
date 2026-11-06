@@ -11,6 +11,7 @@ import * as util from './core/util.mjs';
 import { criarProcessos } from './core/processos.mjs';
 import { criarArquivos } from './core/arquivos.mjs';
 import { carregarPlugins, manifestoPublico } from './core/plugins.mjs';
+import { criarChecagem } from './core/seguranca.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const config = JSON.parse(await readFile(path.join(ROOT, 'painel.config.json'), 'utf8').catch(() => '{}'));
@@ -70,10 +71,15 @@ async function estatico(res, arquivo) {
   res.end(await readFile(arquivo));
 }
 
+// ---------- proteção (core/seguranca.mjs) ----------
+const checarPedido = criarChecagem(PORT);
+
 // ---------- rotas ----------
 const servidor = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
+  const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
   const rota = url.pathname;
+  const barrado = checarPedido(req, rota);
+  if (barrado) return util.json(res, barrado[0], { erro: barrado[1] });
   try {
     if (req.method === 'GET' && rota === '/') return estatico(res, path.join(ROOT, 'public', 'index.html'));
 
@@ -145,13 +151,10 @@ const servidor = http.createServer(async (req, res) => {
     }
 
     // Envio de arquivos (vídeos da pessoa) para a pasta que um plugin declara em manifesto.recebe.
-    // O cabeçalho X-Painel obriga o navegador a pedir licença (CORS) antes: outro site aberto no
-    // navegador não consegue gravar arquivos aqui só por saber o endereço.
+    // Além das barreiras gerais (checarPedido), o cabeçalho X-Painel obriga o navegador a pedir licença
+    // (CORS) antes de mandar o arquivo. Não é autenticação: é só mais uma camada contra outros sites.
     if (req.method === 'POST' && rota === '/api/enviar') {
-      const origem = req.headers.origin;
-      if (req.headers['x-painel'] !== 'enviar' || (origem && origem !== `http://${req.headers.host}`)) {
-        return util.json(res, 403, { erro: 'Envio recusado.' });
-      }
+      if (req.headers['x-painel'] !== 'enviar') return util.json(res, 403, { erro: 'Envio recusado.' });
       const p = porId(url.searchParams.get('plugin'));
       const dir = p?.m.recebe && p.ctx.pastas[p.m.recebe.pasta];
       if (!dir) return util.json(res, 404, { erro: 'Nenhum plugin recebe arquivos aqui.' });
@@ -180,7 +183,7 @@ const servidor = http.createServer(async (req, res) => {
     util.json(res, 404, { erro: 'Não encontrado.' });
   } catch (e) {
     if (res.headersSent) return res.destroy();
-    util.json(res, 500, { erro: e.message });
+    util.json(res, e.status || 500, { erro: e.message });
   }
 });
 

@@ -42,7 +42,13 @@ STATUS_DIR = f'{RAIZ}/_colab/status'
 # não aparece; remonta e, se ainda faltar, para aqui em vez de criar uma "EditorVideos (1)" vazia.
 # Pelo Colab CLI (Painel/colab-cli) o Drive já vem montado por \`colab drivemount\`: drive.mount() aqui
 # ficaria esperando um navegador que não existe.
-if os.environ.get('EDITORVIDEOS_CLI') and os.path.isdir('/content/drive/MyDrive'):
+# Tarefas que não precisam do Drive (ex.: a voz pelo CLI) mandam EDITORVIDEOS_SEM_DRIVE=1: o status fica na VM
+# e o Painel acompanha pelo log do CLI.
+SEM_DRIVE = os.environ.get('EDITORVIDEOS_SEM_DRIVE') == '1'
+if SEM_DRIVE:
+    STATUS_DIR = '/content/_colab/status'
+    print('Sem Drive nesta tarefa: o andamento vai pelo log do Colab CLI.')
+elif os.environ.get('EDITORVIDEOS_CLI') and os.path.isdir('/content/drive/MyDrive'):
     print('Drive montado pelo Colab CLI.')
 else:
     drive.mount('/content/drive', force_remount=True)
@@ -50,7 +56,7 @@ else:
         time.sleep(10)
         drive.flush_and_unmount()
         drive.mount('/content/drive', force_remount=True)
-if not os.path.isdir(f'{RAIZ}/HyperFrames'):
+if not SEM_DRIVE and not os.path.isdir(f'{RAIZ}/HyperFrames'):
     raise SystemExit('EditorVideos/HyperFrames não está visível neste Drive. Confira se o Colab está na mesma conta '
                      'do Drive do PC e se a sincronização terminou; depois Ambiente de execução → Desconectar e excluir.')
 
@@ -355,12 +361,16 @@ RITMO = float(os.environ.get('RITMO', RITMO))
   code(`
 #@title 3. Instalar o Chatterbox
 st = Status('voz', '3_voz')
-st('instalando', 2, 'chatterbox-tts 0.1.7', 'instalando o Chatterbox (uns 4 min)')
-!pip -q install chatterbox-tts==0.1.7
-# O chatterbox fixa outra versão do torch; o torchvision do Colab fica incompatível ("torchvision::nms does not
-# exist") e quebra o transformers. A voz não usa torchvision: remover resolve.
-!pip -q uninstall -y torchvision
-st('instalado', 15, linha='Chatterbox instalado')
+import importlib.util
+if importlib.util.find_spec('chatterbox') is None:
+    st('instalando', 2, 'chatterbox-tts 0.1.7', 'instalando o Chatterbox (uns 4 min)')
+    get_ipython().system('pip -q install chatterbox-tts==0.1.7')
+    # O chatterbox fixa outra versão do torch; o torchvision do Colab fica incompatível ("torchvision::nms does not
+    # exist") e quebra o transformers. A voz não usa torchvision: remover resolve.
+    get_ipython().system('pip -q uninstall -y torchvision')
+    st('instalado', 15, linha='Chatterbox instalado')
+else:
+    st('instalado', 15, linha='Chatterbox já instalado nesta sessão')
 `, 'instalar'),
   code(`
 #@title 4. Gerar a narração
@@ -388,13 +398,16 @@ try:
     blocos = frases(TEXTO)
     if not blocos:
         raise ValueError('TEXTO vazio: escreva o roteiro na configuração.')
-    ref = f'{VOZ_DIR}/referencia/{VOZ_REF}' if VOZ_REF else None
+    # Pelo CLI a referência chega por upload (VOZ_REF_CAMINHO); no navegador vem do Drive.
+    ref = os.environ.get('VOZ_REF_CAMINHO') or (f'{VOZ_DIR}/referencia/{VOZ_REF}' if VOZ_REF else None)
     if ref and not os.path.exists(ref):
         raise FileNotFoundError(f'Voz de referência não encontrada: HyperFrames/voz/referencia/{VOZ_REF}')
     from chatterbox.mtl_tts import ChatterboxMultilingualTTS
     gpu = torch.cuda.is_available()
     st('carregando modelo', 17, 'GPU' if gpu else 'CPU (muito lento!)', 'carregando o modelo')
-    modelo = ChatterboxMultilingualTTS.from_pretrained(device='cuda' if gpu else 'cpu')
+    # Sessão mantida ligada pelo Painel: o modelo da rodada anterior continua na memória da GPU.
+    if globals().get('modelo') is None:
+        modelo = ChatterboxMultilingualTTS.from_pretrained(device='cuda' if gpu else 'cpu')
     torch.manual_seed(SEMENTE)
     pausa = torch.zeros(1, int(modelo.sr * PAUSA))
     partes = []
@@ -417,13 +430,365 @@ except Exception as e:
 ], { gpuType: 'T4' });
 voz.metadata.accelerator = 'GPU';
 
+// Blender oficial para Linux, conferido pelo SHA-256 publicado em download.blender.org (blender-5.2.2.sha256).
+const BLENDER = { versao: '5.2.2', serie: '5.2', sha256: '84098912789dc450e95697c4184fb8a90acbe5111c2ba4aede3fecb57806a168' };
+
+// Instalação do Blender oficial (usada pelo 4_blender e pela vitrine do 5_3d_ia). Pede `st` (Status) já criado.
+const INSTALAR_BLENDER = `
+import hashlib, subprocess, urllib.request
+PASTA = '/content/blender-${BLENDER.versao}-linux-x64'
+BLENDER = f'{PASTA}/blender'
+if not os.path.exists(BLENDER):
+    st('baixando', 2, 'Blender ${BLENDER.versao}', 'baixando o Blender (uns 380 MB)')
+    pacote = '/content/blender.tar.xz'
+    urllib.request.urlretrieve('https://download.blender.org/release/Blender${BLENDER.serie}/blender-${BLENDER.versao}-linux-x64.tar.xz', pacote)
+    h = hashlib.sha256()
+    with open(pacote, 'rb') as f:
+        for bloco in iter(lambda: f.read(1 << 20), b''):
+            h.update(bloco)
+    if h.hexdigest() != '${BLENDER.sha256}':
+        raise SystemExit(f'SHA-256 do Blender não confere ({h.hexdigest()}); download interrompido ou adulterado.')
+    st('extraindo', 8, linha='SHA-256 conferido')
+    subprocess.run(['tar', '-xf', pacote, '-C', '/content'], check=True)
+    os.remove(pacote)
+    # Bibliotecas de sistema que o Blender pede mesmo sem interface.
+    subprocess.run('apt-get -qq install -y libxkbcommon0 libsm6 libxi6 libxxf86vm1 libgl1 > /dev/null', shell=True)
+st('instalado', 12, linha=subprocess.run([BLENDER, '--version'], capture_output=True, text=True).stdout.splitlines()[0])
+`;
+
+const blender = notebook([
+  md(`
+# 4 · 3D no Blender (Cycles na GPU)
+
+Roda um script de \`Blender/scripts\` (modelo procedural, cena, luz e câmera) no Blender ${BLENDER.versao} e renderiza com o
+Cycles na GPU da VM (OptiX ou CUDA). Sai \`<nome>.png\` (render), \`<nome>.glb\` (para web e HyperFrames) e \`<nome>.blend\`, num .zip.
+
+Pelo Painel (aba Blender → "renderizar no Colab") tudo é automático: o script sobe para a VM e o .zip volta para \`Blender/saida\`.
+No navegador: envie o script e o \`_estudio.py\` para \`/content\` (ícone de pasta à esquerda), escreva o nome em SCRIPT e Executar tudo.
+`),
+  code(`
+#@title 1. Configuração
+SCRIPT = "microfone.py"  #@param {type:"string"}
+NOME = "microfone"  #@param {type:"string"}
+PORCENTAGEM = 100  #@param {type:"integer"}
+AMOSTRAS = 256  #@param {type:"integer"}
+
+import os
+SCRIPT = os.environ.get('SCRIPT', SCRIPT)
+NOME = os.environ.get('NOME', NOME)
+PORCENTAGEM = int(os.environ.get('PORCENTAGEM', PORCENTAGEM))
+AMOSTRAS = int(os.environ.get('AMOSTRAS', AMOSTRAS))
+`, 'config'),
+  code(STATUS, 'status'),
+  code(`
+#@title 3. Instalar o Blender (oficial, conferido)
+st = Status('blender', '4_blender')
+${INSTALAR_BLENDER}
+`, 'instalar'),
+  code(`
+#@title 4. Renderizar
+import re, shutil, time
+SAIDA = f'/content/blender/saida/{NOME}'
+os.makedirs(SAIDA, exist_ok=True)
+caminho = SCRIPT if os.path.isabs(SCRIPT) else f'/content/{SCRIPT}'
+try:
+    if not os.path.exists(caminho):
+        raise FileNotFoundError(f'Script não encontrado: {caminho}')
+    st('renderizando', 15, SCRIPT, f'{PORCENTAGEM}% · {AMOSTRAS} amostras na GPU')
+    t0 = time.time()
+    proc = subprocess.Popen([BLENDER, '-b', '--factory-startup', '--offline-mode', '-P', caminho, '--', SAIDA, str(PORCENTAGEM), str(AMOSTRAS)],
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env={**os.environ, 'EDITORVIDEOS_GPU': '1'})
+    ultimo = 0
+    for linha in proc.stdout:
+        linha = linha.rstrip()
+        amostra = re.search(r'Sample (\\d+)/(\\d+)', linha)
+        if amostra and time.time() - ultimo > 5:
+            ultimo = time.time()
+            a, b = int(amostra.group(1)), int(amostra.group(2))
+            st(f'amostra {a}/{b}', 15 + a / b * 80)
+            print(f'[3d] amostra {a}/{b} ({a / b * 100:.0f}%)', flush=True)
+        elif linha.startswith('[3d]') or 'Error' in linha or 'Traceback' in linha:
+            st(linha=linha)
+    if proc.wait() != 0:
+        raise RuntimeError(f'O Blender saiu com código {proc.returncode} (veja o log acima).')
+    shutil.make_archive(f'/content/blender/{NOME}', 'zip', SAIDA)
+    st(linha=f'ok: {NOME}.zip em {time.time() - t0:.0f} s ({", ".join(sorted(os.listdir(SAIDA)))})')
+    st.fim('concluido', f'{NOME}: render em {time.time() - t0:.0f} s')
+except Exception as e:
+    st(linha=f'ERRO: {e}')
+    st.fim('erro', str(e))
+    raise
+`, 'renderizar'),
+], { gpuType: 'T4' });
+blender.metadata.accelerator = 'GPU';
+
+// TRELLIS.2 (Microsoft, MIT) com tudo fixo num commit. Rodas do flash-attn oficiais (BSD-3), conferidas pelo SHA-256
+// que o GitHub publica. CuMesh, FlexGEMM e o-voxel (MIT) são compilados na primeira vez e guardados pelo Painel.
+// Não instala nvdiffrast/nvdiffrec (NVIDIA, só uso não comercial): a textura é assada por textura_aberta.py.
+const TRELLIS = {
+  commit: '75fbf0183001ed9876c8dbb35de6b68552ee08bd',
+  cumesh: '12289e1062f0603f2f0d0771b02e1395d247f26f',
+  flexgemm: '6dd94a859c26ee8246888502eada3dd8ad85532e',
+  birefnet: 'e2bf8e4460fc8fa32bba5ea4d94b3233d367b0e4',
+  arch: '8.0;8.6;8.9;9.0',
+  flash: {
+    cp310: '62b17d5d414380fc6f21e63d23cf1454509e11b83403e7c11e03fe03c3727a4d',
+    cp311: '12296a8a0f60118f1a404ad97db6d7d2e6b7e2f2475b47b4618fb8c80e6f9362',
+    cp312: 'f4c4425417ae29a745cb53c923dd5894da42881ba8f75d1fef00980930c23765',
+    cp313: '9e6fe90c21fc0f2e016748e07eac4cb4743ea60f863d39cb45e37847c6249482',
+  },
+};
+
+const ia3d = notebook([
+  md(`
+# 5 · 3D por IA (imagem → modelo com textura, TRELLIS.2)
+
+Transforma uma imagem (objeto ou personagem com fundo simples) num modelo 3D com textura PBR, usando o
+[TRELLIS.2](https://github.com/microsoft/TRELLIS.2) (Microsoft, MIT), e renderiza uma vitrine no Blender. Sai \`<nome>.glb\`,
+\`<nome>.png\` (vitrine), \`<nome>.blend\`, \`<nome>_entrada.png\` (a imagem já sem fundo) e, com giro, \`<nome>_giro.mp4\`.
+
+- GPU com 24 GB ou mais (L4, A100, H100).
+- Precisa de um token do Hugging Face com acesso liberado ao DINOv3 (\`facebook/dinov3-vitl16-pretrain-lvd1689m\`, licença da Meta).
+- O fundo é tirado com o BiRefNet (MIT). A textura é assada sem o nvdiffrast (licença NVIDIA não comercial): \`textura_aberta.py\`.
+- A primeira vez compila extensões CUDA (demora); o Painel guarda o resultado e manda de volta nas próximas.
+
+Pelo Painel (aba Blender → "gerar 3D no Colab") tudo é automático.
+`),
+  code(`
+#@title 1. Configuração
+IMAGEM = "conceito.png"  #@param {type:"string"}
+NOME = "modelo"  #@param {type:"string"}
+QUALIDADE = "1024_cascade"  #@param ["512", "1024_cascade", "1536_cascade"]
+TEXTURA = 2048  #@param {type:"integer"}
+FACES = 500000  #@param {type:"integer"}
+SEMENTE = 42  #@param {type:"integer"}
+AMOSTRAS = 256  #@param {type:"integer"}
+GIRO = 0  #@param {type:"integer"}
+
+import os
+IMAGEM = os.environ.get('IMAGEM', IMAGEM)
+NOME = os.environ.get('NOME', NOME)
+QUALIDADE = os.environ.get('QUALIDADE', QUALIDADE)
+TEXTURA = int(os.environ.get('TEXTURA', TEXTURA))
+FACES = int(os.environ.get('FACES', FACES))
+SEMENTE = int(os.environ.get('SEMENTE', SEMENTE))
+AMOSTRAS = int(os.environ.get('AMOSTRAS', AMOSTRAS))
+GIRO = int(os.environ.get('GIRO', GIRO))
+`, 'config'),
+  code(STATUS, 'status'),
+  code(`
+#@title 3. Instalar o TRELLIS.2 (versões fixas, conferidas)
+import hashlib, json, subprocess, sys, tarfile, glob, shutil, time, urllib.request
+st = Status('ia3d', '5_3d_ia')
+t_inicio = time.time()
+
+def sh(cmd, **kw):
+    r = subprocess.run(cmd, shell=True, capture_output=True, text=True, **kw)
+    if r.returncode != 0:
+        print(r.stdout[-6000:]); print(r.stderr[-6000:])
+        raise RuntimeError(f'falhou: {cmd[:160]}')
+    return r.stdout
+
+def sha256(caminho):
+    h = hashlib.sha256()
+    with open(caminho, 'rb') as f:
+        for bloco in iter(lambda: f.read(1 << 20), b''):
+            h.update(bloco)
+    return h.hexdigest()
+
+PY = f'cp{sys.version_info.major}{sys.version_info.minor}'
+gpu = subprocess.run(['nvidia-smi', '--query-gpu=name,memory.total,compute_cap', '--format=csv,noheader,nounits'],
+                     capture_output=True, text=True).stdout.strip().split(',')
+GPU_NOME, GPU_MB, GPU_CC = gpu[0].strip(), int(gpu[1]), gpu[2].strip()
+st('preparando', 1, linha=f'{GPU_NOME} · {GPU_MB} MB · sm {GPU_CC} · Python {PY}')
+if GPU_MB < 22000:
+    raise SystemExit(f'O TRELLIS.2 precisa de 24 GB de memória de vídeo; esta GPU tem {GPU_MB} MB. Escolha L4, A100 ou H100 no perfil.')
+FLASH = ${JSON.stringify(TRELLIS.flash)}
+if PY not in FLASH:
+    raise SystemExit(f'Python {PY} sem roda pronta do flash-attn; o notebook precisa ser atualizado.')
+
+import importlib.metadata as md
+def versao(p):
+    try:
+        return md.version(p)
+    except md.PackageNotFoundError:
+        return None
+
+if not (versao('torch') or '').startswith('2.6.0'):
+    st('instalando', 3, linha='instalando PyTorch 2.6.0 (CUDA 12.4), a versão do TRELLIS.2')
+    sh(f'{sys.executable} -m pip install -q torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cu124')
+if not versao('flash_attn'):
+    roda = f'flash_attn-2.8.3.post2+cu12torch2.6cxx11abiFALSE-{PY}-{PY}-linux_x86_64.whl'
+    destino = f'/content/{roda}'
+    st('instalando', 6, linha='baixando o flash-attn 2.8.3 (roda oficial)')
+    urllib.request.urlretrieve(f'https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3.post2/{roda.replace("+", "%2B")}', destino)
+    if sha256(destino) != FLASH[PY]:
+        raise SystemExit('SHA-256 do flash-attn não confere; download interrompido ou adulterado.')
+    sh(f'{sys.executable} -m pip install -q --no-deps {destino}')
+    os.remove(destino)
+st('instalando', 8, linha='bibliotecas Python do TRELLIS.2')
+sh(f'{sys.executable} -m pip install -q easydict plyfile trimesh zstandard opencv-python-headless imageio imageio-ffmpeg '
+   f'kornia timm einops ninja "transformers>=4.56" huggingface_hub')
+
+REPO = '/content/TRELLIS.2'
+if not os.path.isdir(REPO):
+    st('instalando', 10, linha='baixando o código do TRELLIS.2 (commit ${TRELLIS.commit.slice(0, 7)})')
+    sh(f'git clone -q https://github.com/microsoft/TRELLIS.2.git {REPO} && cd {REPO} && git checkout -q ${TRELLIS.commit} '
+       f'&& git submodule update -q --init --recursive')
+
+# Extensões CUDA: reaproveita as rodas que o Painel guardou (mesmo Python, torch e commits) ou compila e devolve.
+EXT = [('cumesh', 'https://github.com/JeffreyXiang/CuMesh.git', '${TRELLIS.cumesh}'),
+       ('flex_gemm', 'https://github.com/JeffreyXiang/FlexGEMM.git', '${TRELLIS.flexgemm}'),
+       ('o_voxel', None, '${TRELLIS.commit}')]
+META = dict(py=PY, torch='2.6.0+cu124', arch='${TRELLIS.arch}', ext={n: c for n, _, c in EXT})
+RODAS = '/content/rodas_trellis2'
+SAIDA = f'/content/ia3d/{NOME}'
+os.makedirs(SAIDA, exist_ok=True)
+NOVAS = False
+if all(versao(n) for n, _, _ in EXT):
+    st(linha='extensões já instaladas nesta máquina')
+else:
+    usou_cache = False
+    if os.path.exists('/content/rodas_trellis2.tar'):
+        with tarfile.open('/content/rodas_trellis2.tar') as t:
+            t.extractall(RODAS)
+        try:
+            usou_cache = json.load(open(f'{RODAS}/meta.json')) == META
+        except Exception:
+            usou_cache = False
+        st(linha='rodas guardadas pelo Painel: ' + ('servem, sem compilar' if usou_cache else 'de outra versão, compilando de novo'))
+    if not usou_cache:
+        shutil.rmtree(RODAS, ignore_errors=True)
+        os.makedirs(RODAS)
+        amb = {**os.environ, 'TORCH_CUDA_ARCH_LIST': '${TRELLIS.arch}', 'MAX_JOBS': str(os.cpu_count() or 4)}
+        for i, (nome, url, commit) in enumerate(EXT):
+            pasta = f'{REPO}/o-voxel' if url is None else f'/content/ext/{nome}'
+            if url and not os.path.isdir(pasta):
+                sh(f'git clone -q {url} {pasta} && cd {pasta} && git checkout -q {commit} && git submodule update -q --init --recursive')
+            st('compilando', 12 + i * 8, linha=f'compilando {nome} ({i + 1}/{len(EXT)}); a primeira vez demora')
+            t0 = time.time()
+            sh(f'{sys.executable} -m pip wheel -q --no-build-isolation --no-deps -w {RODAS} {pasta}', env=amb)
+            st(linha=f'{nome} compilado em {time.time() - t0:.0f} s')
+        json.dump(META, open(f'{RODAS}/meta.json', 'w'))
+        os.makedirs(f'{SAIDA}/_rodas', exist_ok=True)
+        with tarfile.open(f'{SAIDA}/_rodas/trellis2-rodas.tar', 'w') as t:
+            for arq in os.listdir(RODAS):
+                t.add(f'{RODAS}/{arq}', arcname=arq)
+        NOVAS = True
+    sh(f'{sys.executable} -m pip install -q --no-deps {RODAS}/*.whl')
+
+sys.path.insert(0, REPO)
+sys.path.insert(0, '/content')
+import textura_aberta
+textura_aberta.sem_nvidia()
+import torch
+# Autoteste do rasterizador UV: dois triângulos cobrindo o quadrado inteiro precisam cobrir todos os texels.
+_uv = torch.tensor([[0, 0], [1, 0], [1, 1], [0, 1]], dtype=torch.float32, device='cuda')
+_f = torch.tensor([[0, 1, 2], [0, 2, 3]], device='cuda')
+_id, _b = textura_aberta.rasterizar_uv(_uv, _f, 64)
+assert bool((_id >= 0).all()) and torch.allclose(_b.sum(-1), torch.ones(64, 64, device='cuda')), 'rasterizador UV falhou no autoteste'
+st('instalado', 30, linha=f'TRELLIS.2 pronto em {time.time() - t_inicio:.0f} s (torch {torch.__version__})')
+`, 'instalar'),
+  code(`
+#@title 4. Gerar o modelo 3D
+import gc
+os.environ['ATTN_BACKEND'] = 'flash_attn'
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+os.environ['OPENCV_IO_ENABLE_OPENEXR'] = '1'
+# Token do Hugging Face (só para o DINOv3): o Painel sobe o arquivo, lido aqui e apagado da VM.
+if os.path.exists('/content/.hf_token'):
+    os.environ['HF_TOKEN'] = open('/content/.hf_token').read().strip()
+    os.remove('/content/.hf_token')
+if not os.environ.get('HF_TOKEN'):
+    raise SystemExit('Falta o token do Hugging Face (aba Blender do Painel → 3D por IA → token).')
+from PIL import Image
+from huggingface_hub import snapshot_download
+from trellis2.pipelines import Trellis2ImageTo3DPipeline
+from trellis2.pipelines import rembg as rembg_trellis
+
+# Fundo: BiRefNet original (MIT) num commit fixo, no lugar do RMBG-2.0 (não comercial) do pipeline.json.
+BIREFNET = snapshot_download('ZhengPeng7/BiRefNet', revision='${TRELLIS.birefnet}')
+class BiRefNetAberto(rembg_trellis.BiRefNet):
+    def __init__(self, model_name=None):
+        super().__init__(model_name=BIREFNET)
+rembg_trellis.BiRefNet = BiRefNetAberto
+
+try:
+    t0 = time.time()
+    caminho = IMAGEM if os.path.isabs(IMAGEM) else f'/content/{IMAGEM}'
+    if not os.path.exists(caminho):
+        raise FileNotFoundError(f'Imagem não encontrada: {caminho}')
+    st('carregando', 32, linha='carregando os modelos (TRELLIS.2-4B, DINOv3, BiRefNet)')
+    try:
+        pipeline = Trellis2ImageTo3DPipeline.from_pretrained('microsoft/TRELLIS.2-4B')
+    except Exception as e:
+        if 'dinov3' in str(e).lower() or '401' in str(e) or '403' in str(e) or 'gated' in str(e).lower():
+            raise SystemExit('Sem acesso ao DINOv3: peça em huggingface.co/facebook/dinov3-vitl16-pretrain-lvd1689m, '
+                             'espere a aprovação da Meta e confira o token na aba Blender.') from e
+        raise
+    pipeline.cuda()
+    st('gerando', 40, linha=f'modelos prontos em {time.time() - t0:.0f} s; tirando o fundo')
+    entrada = pipeline.preprocess_image(Image.open(caminho))
+    entrada.save(f'{SAIDA}/{NOME}_entrada.png')
+    st('gerando', 45, linha=f'gerando a forma e a textura ({QUALIDADE}, semente {SEMENTE})')
+    t1 = time.time()
+    malha = pipeline.run(entrada, seed=SEMENTE, preprocess_image=False, pipeline_type=QUALIDADE)[0]
+    st('gerando', 70, linha=f'3D gerado em {time.time() - t1:.0f} s')
+    malha.simplify(16777216)
+    glb = textura_aberta.to_glb_aberto(
+        vertices=malha.vertices, faces=malha.faces, attr_volume=malha.attrs, coords=malha.coords,
+        attr_layout=malha.layout, voxel_size=malha.voxel_size, aabb=[[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]],
+        decimation_target=FACES, texture_size=TEXTURA, remesh=True, remesh_band=1, remesh_project=0,
+        log=lambda l: st(linha=l))
+    glb.export(f'{SAIDA}/{NOME}.glb', extension_webp=True)
+    st('gerando', 80, linha=f'{NOME}.glb: {os.path.getsize(f"{SAIDA}/{NOME}.glb") / 1e6:.1f} MB · {len(glb.faces)} faces')
+    del pipeline, malha, glb
+    gc.collect()
+    torch.cuda.empty_cache()
+except BaseException as e:
+    st(linha=f'ERRO: {e}')
+    st.fim('erro', str(e))
+    raise
+`, 'gerar'),
+  code(`
+#@title 5. Vitrine no Blender e pacote
+${INSTALAR_BLENDER}
+import re
+try:
+    st('vitrine', 82, linha=f'vitrine no Blender: {AMOSTRAS} amostras' + (f', giro de {GIRO} quadros' if GIRO else ''))
+    proc = subprocess.Popen([BLENDER, '-b', '--factory-startup', '--offline-mode', '-P', '/content/_vitrine.py', '--',
+                             f'{SAIDA}/{NOME}.glb', SAIDA, str(AMOSTRAS), str(GIRO)],
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env={**os.environ, 'EDITORVIDEOS_GPU': '1'})
+    for linha in proc.stdout:
+        linha = linha.rstrip()
+        if linha.startswith('[3d]') or 'Error' in linha or 'Traceback' in linha:
+            st(linha=linha)
+    if proc.wait() != 0:
+        raise RuntimeError(f'O Blender saiu com código {proc.returncode} (veja o log acima).')
+    if GIRO and os.path.isdir(f'{SAIDA}/giro'):
+        sh(f'ffmpeg -y -loglevel error -framerate 24 -i {SAIDA}/giro/%04d.png -c:v libx264 -pix_fmt yuv420p -crf 18 {SAIDA}/{NOME}_giro.mp4')
+        shutil.rmtree(f'{SAIDA}/giro')
+    shutil.make_archive(f'/content/ia3d/{NOME}', 'zip', SAIDA)
+    arquivos = ', '.join(sorted(a for a in os.listdir(SAIDA) if not a.startswith('_')))
+    st(linha=f'ok: {NOME}.zip em {time.time() - t_inicio:.0f} s ({arquivos})' + (' + rodas compiladas para as próximas vezes' if NOVAS else ''))
+    st.fim('concluido', f'{NOME}: 3D pronto em {time.time() - t_inicio:.0f} s')
+except BaseException as e:
+    st(linha=f'ERRO: {e}')
+    st.fim('erro', str(e))
+    raise
+`, 'vitrine'),
+], { gpuType: 'L4' });
+ia3d.metadata.accelerator = 'GPU';
+
 await writeFile(path.join(AQUI, '1_transcrever.ipynb'), JSON.stringify(transcrever, null, 1));
 await writeFile(path.join(AQUI, '2_renderizar.ipynb'), JSON.stringify(renderizar, null, 1));
 await writeFile(path.join(AQUI, '3_voz.ipynb'), JSON.stringify(voz, null, 1));
+await writeFile(path.join(AQUI, '4_blender.ipynb'), JSON.stringify(blender, null, 1));
+await writeFile(path.join(AQUI, '5_3d_ia.ipynb'), JSON.stringify(ia3d, null, 1));
 console.log('notebooks gerados em', AQUI);
 if (existsSync(path.parse(DRIVE).root)) {
   await mkdir(DRIVE, { recursive: true });
-  for (const n of ['1_transcrever.ipynb', '2_renderizar.ipynb', '3_voz.ipynb']) await copyFile(path.join(AQUI, n), path.join(DRIVE, n));
+  for (const n of ['1_transcrever.ipynb', '2_renderizar.ipynb', '3_voz.ipynb', '4_blender.ipynb', '5_3d_ia.ipynb']) await copyFile(path.join(AQUI, n), path.join(DRIVE, n));
   console.log('copiados para', DRIVE);
 } else {
   console.log(`Drive não encontrado (${DRIVE}): copie a pasta notebooks para EditorVideos/_colab/notebooks.`);
