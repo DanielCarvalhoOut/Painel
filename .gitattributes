@@ -1,0 +1,13 @@
+# Quebras de linha iguais para todo mundo, qualquer que seja o core.autocrlf de quem clona.
+* text=auto
+
+# Rodam no WSL/Linux (Colab CLI, Blender, Colab): precisam de LF, senão o bash falha com "$'\r': command not found".
+*.sh    text eol=lf
+*.py    text eol=lf
+*.ipynb text eol=lf
+
+# Rodam no cmd do Windows: CRLF evita rótulos e "goto" quebrados.
+*.cmd   text eol=crlf
+*.bat   text eol=crlf
+
+*.png   binary
